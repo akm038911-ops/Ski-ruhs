@@ -382,36 +382,53 @@
       const o = ac.createOscillator(), g = ac.createGain();
       o.connect(g); g.connect(ac.destination);
       o.type = type; o.frequency.value = freq;
-      g.gain.setValueAtTime(vol, ac.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
-      o.start(); o.stop(ac.currentTime + dur);
+      const t = ac.currentTime;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.008);   // smooth attack
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.start(t); o.stop(t + dur + 0.02);
     } catch(e){}
   }
-  function _noise(dur, vol, cutoff, ac) {
+  function _noise(dur, vol, cutoff, ac, q=1.2) {
     if (!ac) return;
     try {
-      const sr = ac.sampleRate, buf = ac.createBuffer(1, sr*dur, sr);
+      const sr = ac.sampleRate;
+      const buf = ac.createBuffer(1, Math.ceil(sr*dur), sr);
       const d = buf.getChannelData(0);
-      for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+      // Smooth noise via simple LP to avoid crackle
+      let prev=0;
+      for (let i=0;i<d.length;i++) { prev=prev*.65+(Math.random()*2-1)*.35; d[i]=prev; }
       const s = ac.createBufferSource(); s.buffer = buf;
-      const f = ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value = cutoff;
+      const f = ac.createBiquadFilter();
+      f.type='bandpass'; f.frequency.value = cutoff; f.Q.value = q;
       const g = ac.createGain();
       s.connect(f); f.connect(g); g.connect(ac.destination);
-      g.gain.setValueAtTime(vol, ac.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+dur);
-      s.start(); s.stop(ac.currentTime+dur);
+      const t = ac.currentTime;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.start(t); s.stop(t + dur + 0.05);
     } catch(e){}
   }
+  // Chicken cluck: two brief chirps using triangle wave + filtered noise
+  function _cluck(ac, pitch=1) {
+    if(!ac) return;
+    const t=ac.currentTime;
+    _tone(380*pitch,.06,'triangle',.13,ac);
+    _noise(.06,.08,700*pitch,ac,2);
+    setTimeout(()=>{ _tone(460*pitch,.05,'triangle',.09,ac); _noise(.05,.06,900*pitch,ac,2); },65);
+  }
   const sfx = {
-    launch:   () => { const a=AC(); _tone(260,.09,'sawtooth',.12,a); _noise(.12,.06,300,a); },
-    hitWood:  () => { const a=AC(); _noise(.14,.14,900,a); _tone(160,.1,'square',.06,a); },
-    hitStone: () => { const a=AC(); _noise(.18,.18,400,a); _tone(80,.15,'square',.09,a); },
-    explode:  () => { const a=AC(); _noise(.55,.25,150,a); _tone(70,.4,'sawtooth',.18,a); },
-    killFox:  () => { const a=AC(); [440,660,880].forEach((f,i)=>setTimeout(()=>_tone(f,.1,'sine',.1,a),i*55)); },
-    stretch:  () => { const a=AC(); _tone(180,.04,'sine',.04,a); },
-    win:      () => { const a=AC(); [523,659,784,1047].forEach((f,i)=>setTimeout(()=>_tone(f,.28,'sine',.15,a),i*110)); },
-    lose:     () => { const a=AC(); [380,310,240,180].forEach((f,i)=>setTimeout(()=>_tone(f,.28,'triangle',.12,a),i*130)); },
-    bounce:   () => { const a=AC(); _tone(320,.06,'sine',.07,a); },
+    launch:    () => { const a=AC(); _cluck(a,1.1); setTimeout(()=>_noise(.13,.05,220,a,0.8),60); },
+    chickenHit:() => { const a=AC(); _cluck(a,.85); _noise(.1,.1,500,a,1.5); },
+    hitWood:   () => { const a=AC(); _noise(.13,.11,850,a,1); _tone(150,.09,'triangle',.05,a); },
+    hitStone:  () => { const a=AC(); _noise(.16,.13,350,a,0.7); _tone(75,.13,'triangle',.07,a); },
+    explode:   () => { const a=AC(); _noise(.5,.2,130,a,0.5); _tone(65,.38,'triangle',.15,a); },
+    killFox:   () => { const a=AC(); [440,660,880].forEach((f,i)=>setTimeout(()=>_tone(f,.1,'sine',.08,a),i*55)); },
+    stretch:   () => { const a=AC(); _tone(190,.04,'sine',.03,a); },
+    win:       () => { const a=AC(); [523,659,784,1047].forEach((f,i)=>setTimeout(()=>_tone(f,.28,'sine',.13,a),i*110)); },
+    lose:      () => { const a=AC(); [380,310,240,180].forEach((f,i)=>setTimeout(()=>_tone(f,.28,'triangle',.1,a),i*130)); },
+    bounce:    () => { const a=AC(); _tone(300,.05,'sine',.05,a); },
   };
 
   // ── STATE ─────────────────────────────────────────────────────────────────────
@@ -423,6 +440,7 @@
   let shake=0, cameraX=0, cameraTarget=0;
   let shotTimer=0, forceReturnStarted=false;
   let physicsEnabled=false;
+  let levelPhysicsStarted=false; // blocks are static until bird is launched
   let menuTime=0, cloudTime=0, birdQTime=0, menuAnim=0;
   let scorePopups=[];
   let highestUnlocked=1;
@@ -890,7 +908,13 @@
     b.hp-=dmg; b.hitFlash=.12;
     if(obj.kind==='enemy') { obj.hp-=dmg*.5; if(obj.hp<=0) killEnemy(obj); }
     if(b.hp<=0) breakBlock(b);
-    else { b.mat==='stone'?sfx.hitStone():sfx.hitWood(); }
+    else {
+      b.mat==='stone'?sfx.hitStone():sfx.hitWood();
+      // chicken cry when the bird itself hits something hard
+      if(obj===world.currentBird && !obj._cried && Math.abs(impactV)>80){
+        obj._cried=true; sfx.chickenHit();
+      }
+    }
     return true;
   }
 
@@ -903,6 +927,7 @@
     bird.x+=nx*pen*.5; bird.y+=ny*pen*.5;
     const rv=bird.vx*nx+bird.vy*ny;
     const spd=Math.hypot(bird.vx,bird.vy);
+    if(!bird._cried && spd>80){ bird._cried=true; sfx.chickenHit(); }
     e.hp-=spd*bird.mass*.032;
     if(e.hp<=0) killEnemy(e);
     else { e.vx+=nx*spd*bird.mass*.4/e.mass; e.vy+=ny*spd*bird.mass*.4/e.mass; }
@@ -941,7 +966,7 @@
     world.birds = lvl.birds.slice();
     world.shotsLeft = world.birds.length;
     cameraX=0; cameraTarget=0; shotTimer=0;
-    forceReturnStarted=false; physicsEnabled=false;
+    forceReturnStarted=false; physicsEnabled=false; levelPhysicsStarted=false;
     state='aim'; pointerId=null; drag.active=false;
     scorePopups.length=0;
     if(!preserveScore) score=0;
@@ -993,8 +1018,9 @@
         resolveGround(bird);
         if(bird.y>groundY+100) bird.alive=false;
       }
-      // blocks
+      // blocks — static until first launch
       for(const b of world.blocks){
+        if(!levelPhysicsStarted){if(b.hitFlash>0)b.hitFlash-=sdt;continue;}
         if(!b.alive||b.sleep>0){b.sleep=Math.max(0,b.sleep-sdt);continue;}
         b.vy+=gravity*sdt;
         b.vx*=Math.pow(friction,sdt*60);
@@ -1017,7 +1043,7 @@
       // enemies
       for(let i=0;i<world.enemies.length;i++){
         const e=world.enemies[i];
-        if(!e.alive){continue;}
+        if(!e.alive||!levelPhysicsStarted){continue;}
         e.vy+=gravity*sdt;
         e.vx*=Math.pow(friction,sdt*60);
         e.x+=e.vx*sdt; e.y+=e.vy*sdt;
@@ -1781,7 +1807,7 @@
     const ang=Math.atan2(ddy,ddx);
     bird.vx=Math.cos(ang)*pullD*launchPower;
     bird.vy=Math.sin(ang)*pullD*launchPower;
-    bird.launched=true; physicsEnabled=true;
+    bird.launched=true; physicsEnabled=true; levelPhysicsStarted=true;
     state='flying'; shotTimer=0; sfx.launch();
     // Also use power on tap during flight
   });
