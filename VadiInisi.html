@@ -1245,6 +1245,37 @@ lamp.position.set(i % 2 === 0 ? -18 : 18, 13.8, z);
 chunk.add(lamp);
 }
 
+// --- Mağara zenginliği: yerden yükselen sarkıtlar (stalagmit) + parlayan mantarlar ---
+const stalagmites = new THREE.InstancedMesh(new THREE.ConeGeometry(0.7, 4.2, 7), materials.ice, 60);
+for (let i = 0; i < 60; i++) {
+const x = -20 + Math.random() * 40;
+const z = (Math.random() - 0.5) * 396;
+const sc = 0.4 + Math.random() * 1.2;
+dummy.position.set(x, sc * 2.0, z);
+dummy.scale.set(0.7 + Math.random() * 0.7, sc, 0.7 + Math.random() * 0.7);
+dummy.rotation.set(0, Math.random() * Math.PI, 0);
+dummy.updateMatrix();
+stalagmites.setMatrixAt(i, dummy.matrix);
+}
+stalagmites.castShadow = true; stalagmites.frustumCulled = false;
+chunk.add(stalagmites);
+
+const mushMat = new THREE.MeshStandardMaterial({ color: 0x7cf2c4, emissive: 0x16a34a, emissiveIntensity: 1.1, roughness: 0.5 });
+const mushCaps = new THREE.InstancedMesh(new THREE.SphereGeometry(0.32, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), mushMat, 40);
+const mushStems = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.07, 0.1, 0.4, 6), materials.ice, 40);
+for (let i = 0; i < 40; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (8 + Math.random() * 16);
+const z = (Math.random() - 0.5) * 394;
+const sc = 0.6 + Math.random() * 1.0;
+dummy.position.set(x, 0.2 * sc, z); dummy.scale.set(sc, sc, sc); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
+mushStems.setMatrixAt(i, dummy.matrix);
+dummy.position.set(x, 0.42 * sc, z); dummy.updateMatrix();
+mushCaps.setMatrixAt(i, dummy.matrix);
+}
+mushCaps.frustumCulled = false; mushStems.frustumCulled = false;
+chunk.add(mushCaps, mushStems);
+
 return chunk;
 }
 
@@ -2211,6 +2242,33 @@ const groove = new THREE.Mesh(grooveGeo, materials.trackGroove);
 groove.position.set(x, 0.07, 0);
 chunk.add(groove);
 }
+
+// --- Uçurum zenginliği: zirve bayrakları + yamaçta kar yığınları ---
+const cPoleMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.4, roughness: 0.5 });
+const cFlagMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide });
+const cPoleGeo = new THREE.CylinderGeometry(0.06, 0.07, 2.4, 6);
+const cFlagGeo = new THREE.PlaneGeometry(1.1, 0.6);
+for (let i = 0; i < 5; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (26 + Math.random() * 16);
+const z = -180 + i * 80;
+const y = getCliffTerrainHeight(x, z);
+const pole = new THREE.Mesh(cPoleGeo, cPoleMat); pole.position.set(x, y + 1.2, z); chunk.add(pole);
+const flag = new THREE.Mesh(cFlagGeo, cFlagMat); flag.position.set(x + 0.55, y + 1.9, z); chunk.add(flag);
+}
+
+const driftMat = new THREE.MeshStandardMaterial({ color: 0xf2f7ff, roughness: 0.8 });
+const drifts = new THREE.InstancedMesh(new THREE.SphereGeometry(2.2, 10, 8), driftMat, 14);
+for (let i = 0; i < 14; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (22 + Math.random() * 26);
+const z = (Math.random() - 0.5) * 390;
+const y = getCliffTerrainHeight(x, z);
+dummy.position.set(x, y + 0.4, z); dummy.scale.set(1.6 + Math.random(), 0.5 + Math.random() * 0.4, 1.6 + Math.random()); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
+drifts.setMatrixAt(i, dummy.matrix);
+}
+drifts.frustumCulled = false;
+chunk.add(drifts);
 return chunk;
 }
 
@@ -2351,6 +2409,47 @@ dummy.updateMatrix();
 rocks.setMatrixAt(i, dummy.matrix);
 }
 chunk.add(rocks);
+
+// --- Orman zenginliği: çalılar, devrik kütükler, kar yamaları, ateşböcekleri ---
+const bushMat = new THREE.MeshStandardMaterial({ color: 0x335c34, roughness: 0.95 });
+const bushes = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.9, 0), bushMat, 26);
+for (let i = 0; i < 26; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (19 + Math.random() * 40);
+const z = -196 + Math.random() * 392;
+const sc = 0.6 + Math.random() * 0.9;
+dummy.position.set(x, getForestGroundHeight(x, z) + sc * 0.5, z); dummy.scale.set(sc * 1.3, sc, sc * 1.3); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
+bushes.setMatrixAt(i, dummy.matrix);
+}
+bushes.castShadow = true; bushes.frustumCulled = false; chunk.add(bushes);
+
+const logs = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.4, 0.5, 4.5, 7), materials.bark, 8);
+for (let i = 0; i < 8; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (20 + Math.random() * 32);
+const z = -190 + Math.random() * 380;
+dummy.position.set(x, getForestGroundHeight(x, z) + 0.4, z); dummy.scale.set(1, 1, 1); dummy.rotation.set(Math.PI / 2, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3); dummy.updateMatrix();
+logs.setMatrixAt(i, dummy.matrix);
+}
+logs.castShadow = true; logs.frustumCulled = false; chunk.add(logs);
+
+const patchMat = new THREE.MeshStandardMaterial({ color: 0xeef4fb, roughness: 0.85 });
+const patches = new THREE.InstancedMesh(new THREE.CircleGeometry(1.6, 10), patchMat, 22);
+for (let i = 0; i < 22; i++) {
+const x = (Math.random() - 0.5) * 150;
+const z = -198 + Math.random() * 396;
+dummy.position.set(x, getForestGroundHeight(x, z) + 0.02, z); dummy.scale.set(0.6 + Math.random() * 1.4, 0.6 + Math.random() * 1.4, 1); dummy.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI); dummy.updateMatrix();
+patches.setMatrixAt(i, dummy.matrix);
+}
+patches.frustumCulled = false; chunk.add(patches);
+
+const fireGeo = new THREE.BufferGeometry();
+const firePos = new Float32Array(40 * 3);
+for (let i = 0; i < 40; i++) { firePos[i * 3] = (Math.random() - 0.5) * 80; firePos[i * 3 + 1] = 1 + Math.random() * 6; firePos[i * 3 + 2] = (Math.random() - 0.5) * 390; }
+fireGeo.setAttribute('position', new THREE.BufferAttribute(firePos, 3));
+const fireMat = new THREE.PointsMaterial({ color: 0xffe9a8, size: 0.5, transparent: true, opacity: 0.9, depthWrite: false });
+const fireflies = new THREE.Points(fireGeo, fireMat); fireflies.frustumCulled = false; chunk.add(fireflies);
+
 return chunk;
 }
 
@@ -4983,6 +5082,39 @@ mesh.receiveShadow = true;
 g.add(mesh);
 g.add(createSideForest());
 g.add(createEdgeDecor());
+
+// --- Vadi zenginliği: karlı çamlar + slalom bayrakları ---
+const vDummy = new THREE.Object3D();
+const vPineTrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.3, 1.5, 6), matTreeTrunk, 16);
+const vPineLeaf = new THREE.InstancedMesh(new THREE.ConeGeometry(1.6, 4.0, 7), matTreeLeaves, 16);
+const vPineCap = new THREE.InstancedMesh(new THREE.ConeGeometry(0.55, 0.8, 7), matSnow, 16);
+for (let i = 0; i < 16; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (22 + Math.random() * 70);
+const z = (Math.random() - 0.5) * 390;
+const sc = 0.9 + Math.random() * 1.1;
+vDummy.position.set(x, 0.75 * sc, z); vDummy.scale.set(sc, sc, sc); vDummy.rotation.set(0, Math.random() * Math.PI, 0); vDummy.updateMatrix();
+vPineTrunk.setMatrixAt(i, vDummy.matrix);
+vDummy.position.set(x, 3.5 * sc, z); vDummy.updateMatrix(); vPineLeaf.setMatrixAt(i, vDummy.matrix);
+vDummy.position.set(x, 5.7 * sc, z); vDummy.updateMatrix(); vPineCap.setMatrixAt(i, vDummy.matrix);
+}
+vPineTrunk.castShadow = true; vPineLeaf.castShadow = true;
+vPineTrunk.frustumCulled = false; vPineLeaf.frustumCulled = false; vPineCap.frustumCulled = false;
+g.add(vPineTrunk, vPineLeaf, vPineCap);
+
+const vPoleMat = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.5 });
+const vFlagRed = new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide });
+const vFlagBlue = new THREE.MeshBasicMaterial({ color: 0x3b82f6, side: THREE.DoubleSide });
+const vPoleGeo = new THREE.CylinderGeometry(0.05, 0.06, 2.2, 6);
+const vFlagGeo = new THREE.PlaneGeometry(1.0, 0.7);
+for (let i = 0; i < 10; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const z = -190 + i * 40;
+const x = side * 15.5;
+const pole = new THREE.Mesh(vPoleGeo, vPoleMat); pole.position.set(x, 1.1, z); pole.castShadow = true; g.add(pole);
+const flag = new THREE.Mesh(vFlagGeo, side < 0 ? vFlagRed : vFlagBlue);
+flag.position.set(x + side * 0.5, 1.8, z); flag.rotation.y = side < 0 ? 0 : Math.PI; g.add(flag);
+}
 return g;
 }
 
@@ -5177,6 +5309,62 @@ const smoke = new THREE.Points(sg, materials.smoke);
 smoke.frustumCulled = false;
 chunk.add(smoke);
 }
+
+// --- Köy zenginliği: çit korkulukları, fıçılar, kardan adamlar, kilise, asılı ışıklar ---
+// Çit korkulukları (yatay raylar)
+const railGeo = new THREE.BoxGeometry(0.1, 0.1, 392);
+for (const side of [-1, 1]) {
+for (const yy of [0.4, 0.78]) {
+const rail = new THREE.Mesh(railGeo, materials.fence);
+rail.position.set(side * 18.5, yy, 0);
+chunk.add(rail);
+}
+}
+// Fıçılar
+const barrelMat = new THREE.MeshStandardMaterial({ color: 0x6b4326, roughness: 0.85 });
+const barrels = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.5, 0.5, 1.1, 10), barrelMat, 10);
+for (let i = 0; i < 10; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (20 + Math.random() * 8);
+const z = -180 + Math.random() * 360;
+dummy.position.set(x, 0.55, z); dummy.scale.set(1, 1, 1); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
+barrels.setMatrixAt(i, dummy.matrix);
+}
+barrels.castShadow = true; barrels.frustumCulled = false; chunk.add(barrels);
+// Kardan adamlar
+const noseMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.7 });
+function makeSnowman() {
+const s = new THREE.Group();
+const b1 = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 10), materials.snowRoof); b1.position.y = 0.6; b1.castShadow = true; s.add(b1);
+const b2 = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), materials.snowRoof); b2.position.y = 1.4; b2.castShadow = true; s.add(b2);
+const b3 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), materials.snowRoof); b3.position.y = 2.0; b3.castShadow = true; s.add(b3);
+const nose = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.4, 6), noseMat); nose.rotation.x = Math.PI / 2; nose.position.set(0, 2.02, 0.32); s.add(nose);
+return s;
+}
+for (let i = 0; i < 3; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const sm = makeSnowman();
+sm.position.set(side * (19 + Math.random() * 6), 0, -150 + i * 130 + Math.random() * 40);
+chunk.add(sm);
+}
+// Kilise / çan kulesi (landmark, tek tarafta)
+const churchSide = Math.random() > 0.5 ? 1 : -1;
+const church = new THREE.Group();
+const ctower = new THREE.Mesh(new THREE.BoxGeometry(4, 9, 4), materials.wallLight); ctower.position.y = 4.5; ctower.castShadow = true; church.add(ctower);
+const csteeple = new THREE.Mesh(new THREE.ConeGeometry(3.0, 4.0, 4), materials.snowRoof); csteeple.rotation.y = Math.PI / 4; csteeple.position.y = 11; csteeple.castShadow = true; church.add(csteeple);
+const cbell = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 0.2), materials.window); cbell.position.set(0, 7.2, 2.01); church.add(cbell);
+const ccrossV = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.2, 0.15), materials.beam); ccrossV.position.y = 13.6; church.add(ccrossV);
+const ccrossH = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.15, 0.15), materials.beam); ccrossH.position.y = 13.8; church.add(ccrossH);
+church.position.set(churchSide * 30, 0, -40 + Math.random() * 80);
+church.rotation.y = churchSide > 0 ? Math.PI : 0;
+chunk.add(church);
+// Asılı sıcak ışık dizisi (pist kenarı)
+const stringPos = [];
+for (let i = 0; i < 60; i++) { const side = i % 2 === 0 ? -1 : 1; stringPos.push(side * 17.5, 3.0 + Math.sin(i * 0.6) * 0.25, -195 + (i / 60) * 390); }
+const stringGeo = new THREE.BufferGeometry();
+stringGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(stringPos), 3));
+const stringMat = new THREE.PointsMaterial({ color: 0xffdf91, size: 0.45, transparent: true, opacity: 0.95, depthWrite: false });
+const stringLights = new THREE.Points(stringGeo, stringMat); stringLights.frustumCulled = false; chunk.add(stringLights);
 
 return chunk;
 }
