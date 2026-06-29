@@ -563,6 +563,7 @@ buttons.forEach(btn => {
 let scene, camera, renderer, player;
 let obstacles = [], snowParticles, trailParticles;
 let worldGroup, ground1, ground2;
+let hemiLight, sunLight, fillLight, skyDome;
 let clock;
 let runElapsed = 0;
 let mapPhase = 'valley';
@@ -880,13 +881,26 @@ renderer.toneMappingExposure = 1.3;
 document.body.appendChild(renderer.domElement);
 renderer.domElement.id = 'game-canvas';
 initMaterials();
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444466, 0.6);
+hemiLight = new THREE.HemisphereLight(0xbfe0ff, 0x6b7a8f, 0.62);
 scene.add(hemiLight);
-const sunLight = new THREE.DirectionalLight(0xfff5b6, 2.0);
+sunLight = new THREE.DirectionalLight(0xfff5b6, 2.0);
 sunLight.position.set(100, 200, 50);
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.width = 1024; sunLight.shadow.mapSize.height = 1024;
+sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.camera.left = -75; sunLight.shadow.camera.right = 75;
+sunLight.shadow.camera.top = 75; sunLight.shadow.camera.bottom = -75;
+sunLight.shadow.camera.near = 20; sunLight.shadow.camera.far = 720;
+sunLight.shadow.bias = -0.0004;
+if ('normalBias' in sunLight.shadow) sunLight.shadow.normalBias = 0.55;
+sunLight.shadow.camera.updateProjectionMatrix();
 scene.add(sunLight);
+// Karşı yönden yumuşak dolgu ışığı: gölgeler tamamen siyah kalmasın, hacim hissi artsın.
+fillLight = new THREE.DirectionalLight(0x9fc4e8, 0.35);
+fillLight.position.set(-90, 60, -40);
+scene.add(fillLight);
+// Gradyan gökyüzü kubbesi: düz renk yerine biome'a göre tepe/ufuk rengi harmanlanan gerçek gökyüzü.
+skyDome = createSkyDome();
+scene.add(skyDome);
 worldGroup = new THREE.Group();
 worldGroup.rotation.x = -0.436;
 scene.add(worldGroup);
@@ -4972,6 +4986,27 @@ g.add(createEdgeDecor());
 return g;
 }
 
+function createSkyDome() {
+const geo = new THREE.SphereGeometry(760, 32, 16);
+const mat = new THREE.ShaderMaterial({
+uniforms: {
+topColor: { value: new THREE.Color(0x2f6fb0) },
+bottomColor: { value: new THREE.Color(0xcfe4f2) },
+offset: { value: 60 },
+exponent: { value: 0.62 }
+},
+vertexShader: 'varying vec3 vWorldPosition; void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vWorldPosition = wp.xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+fragmentShader: 'uniform vec3 topColor; uniform vec3 bottomColor; uniform float offset; uniform float exponent; varying vec3 vWorldPosition; void main(){ float h = normalize(vWorldPosition + vec3(0.0, offset, 0.0)).y; float f = pow(clamp(h, 0.0, 1.0), exponent); gl_FragColor = vec4(mix(bottomColor, topColor, f), 1.0); }',
+side: THREE.BackSide,
+depthWrite: false,
+fog: false
+});
+const dome = new THREE.Mesh(geo, mat);
+dome.renderOrder = -1;
+dome.frustumCulled = false;
+return dome;
+}
+
 function buildBiomeRegistry() {
 if (worldBiomes) return;
 const caveMats = createCaveBiomeMaterials();
@@ -4979,13 +5014,17 @@ const cliffMats = createCliffBiomeMaterials();
 const forestMats = createForestBiomeMaterials();
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
-  bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520 },
+  bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520,
+  sun: new THREE.Color(0xfff5b6), sunInt: 2.0, hemiSky: new THREE.Color(0xbfe0ff), hemiGround: new THREE.Color(0x6b7a8f), hemiInt: 0.62, skyTop: new THREE.Color(0x2f6fb0) },
 { name: 'cave', makeChunk: () => createIceCaveChunk(caveMats),
-  bg: new THREE.Color(0x071525), fogColor: new THREE.Color(0x0b2233), fogNear: 26, fogFar: 250 },
+  bg: new THREE.Color(0x071525), fogColor: new THREE.Color(0x0b2233), fogNear: 26, fogFar: 250,
+  sun: new THREE.Color(0x6f9ec9), sunInt: 0.5, hemiSky: new THREE.Color(0x13314a), hemiGround: new THREE.Color(0x05121d), hemiInt: 0.55, skyTop: new THREE.Color(0x081521) },
 { name: 'cliff', makeChunk: () => createCliffCourseChunk(cliffMats),
-  bg: new THREE.Color(0x87b8d5), fogColor: new THREE.Color(0xb6d3e6), fogNear: 130, fogFar: 740 },
+  bg: new THREE.Color(0x87b8d5), fogColor: new THREE.Color(0xb6d3e6), fogNear: 130, fogFar: 740,
+  sun: new THREE.Color(0xffffff), sunInt: 2.35, hemiSky: new THREE.Color(0xc4e0ff), hemiGround: new THREE.Color(0x5b7488), hemiInt: 0.72, skyTop: new THREE.Color(0x2b6cae) },
 { name: 'forest', makeChunk: () => createForestCourseChunk(forestMats),
-  bg: new THREE.Color(0x223d2e), fogColor: new THREE.Color(0x33503c), fogNear: 48, fogFar: 380 }
+  bg: new THREE.Color(0x223d2e), fogColor: new THREE.Color(0x33503c), fogNear: 48, fogFar: 380,
+  sun: new THREE.Color(0xffe9b0), sunInt: 1.45, hemiSky: new THREE.Color(0xa7c293), hemiGround: new THREE.Color(0x26331d), hemiInt: 0.8, skyTop: new THREE.Color(0x5e8a86) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
@@ -5067,6 +5106,22 @@ if (scene.fog) {
 scene.fog.color.copy(a.fogColor).lerp(b.fogColor, t);
 scene.fog.near = a.fogNear + (b.fogNear - a.fogNear) * t;
 scene.fog.far = a.fogFar + (b.fogFar - a.fogFar) * t;
+}
+// Biome'a özel aydınlatma harmanı: güneş + ortam ışığı yumuşakça geçer.
+if (sunLight && a.sun) {
+sunLight.color.copy(a.sun).lerp(b.sun, t);
+sunLight.intensity = a.sunInt + (b.sunInt - a.sunInt) * t;
+}
+if (hemiLight && a.hemiSky) {
+hemiLight.color.copy(a.hemiSky).lerp(b.hemiSky, t);
+hemiLight.groundColor.copy(a.hemiGround).lerp(b.hemiGround, t);
+hemiLight.intensity = a.hemiInt + (b.hemiInt - a.hemiInt) * t;
+}
+// Gökyüzü kubbesi: ufuk rengi sisle aynı kalsın (dikişsiz ufuk), tepe rengi biome'a göre değişsin.
+if (skyDome && a.skyTop) {
+const u = skyDome.material.uniforms;
+u.topColor.value.copy(a.skyTop).lerp(b.skyTop, t);
+u.bottomColor.value.copy(a.fogColor).lerp(b.fogColor, t);
 }
 }
 
