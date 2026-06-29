@@ -2307,7 +2307,7 @@ ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 chunk.add(ground);
 
-const treeCount = 112;
+const treeCount = 190;
 const leavesPerTree = 14;
 const trunkGeo = new THREE.CylinderGeometry(0.58, 0.92, 1, 7);
 const branchGeo = new THREE.CylinderGeometry(0.11, 0.30, 1, 6);
@@ -2322,7 +2322,7 @@ let leafIndex = 0;
 
 for (let i = 0; i < treeCount; i++) {
 const side = i % 2 === 0 ? -1 : 1;
-const x = side * (24 + Math.random() * 29);
+const x = side * (19 + Math.random() * 54);
 const z = -198 + Math.random() * 396;
 const rootY = getForestGroundHeight(x, z);
 const scale = 0.78 + Math.random() * 0.78;
@@ -5559,13 +5559,13 @@ worldBiomes = [
   bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 66, fogFar: 470,
   sun: new THREE.Color(0xfff5b6), sunInt: 1.95, hemiSky: new THREE.Color(0xbfe0ff), hemiGround: new THREE.Color(0x6f7d68), hemiInt: 0.64, skyTop: new THREE.Color(0x2f6fb0) },
 { name: 'village', makeChunk: () => createVillageChunk(villageMats),
-  // Alp köyü: berrak, hafif sıcak öğleden sonra; pencere/lamba ışıkları belirginleşsin.
-  bg: new THREE.Color(0xbcd3e6), fogColor: new THREE.Color(0xdfe9f0), fogNear: 70, fogFar: 500,
-  sun: new THREE.Color(0xfff0d0), sunInt: 1.95, hemiSky: new THREE.Color(0xcfe2f5), hemiGround: new THREE.Color(0x8a8675), hemiInt: 0.66, skyTop: new THREE.Color(0x3a72ad) },
+  // Alp köyü: berrak, hafif sıcak öğleden sonra; sis maviye çekildi ve uzağa itildi (beyaz pus gitti).
+  bg: new THREE.Color(0xaccadf), fogColor: new THREE.Color(0xafcde2), fogNear: 120, fogFar: 730,
+  sun: new THREE.Color(0xfff0d0), sunInt: 1.95, hemiSky: new THREE.Color(0xcfe2f5), hemiGround: new THREE.Color(0x8a8675), hemiInt: 0.62, skyTop: new THREE.Color(0x3a72ad) },
 { name: 'lake', makeChunk: () => createFrozenLakeChunk(lakeMats),
-  // Donmuş göl: berrak, soğuk, çıtır bir gün; geniş görüş, mavi-buz paleti.
-  bg: new THREE.Color(0xcfe2ee), fogColor: new THREE.Color(0xdfeaf2), fogNear: 80, fogFar: 560,
-  sun: new THREE.Color(0xeaf2ff), sunInt: 2.1, hemiSky: new THREE.Color(0xd2e6f5), hemiGround: new THREE.Color(0x8fa6b5), hemiInt: 0.7, skyTop: new THREE.Color(0x4a86bd) }
+  // Donmuş göl: berrak, soğuk, çıtır bir gün; sis maviye çekildi ve uzağa itildi (beyaz pus gitti).
+  bg: new THREE.Color(0xb4d2e6), fogColor: new THREE.Color(0xaccfe4), fogNear: 130, fogFar: 750,
+  sun: new THREE.Color(0xeaf2ff), sunInt: 2.1, hemiSky: new THREE.Color(0xd2e6f5), hemiGround: new THREE.Color(0x8fa6b5), hemiInt: 0.66, skyTop: new THREE.Color(0x4a86bd) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
