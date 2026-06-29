@@ -5131,7 +5131,7 @@ const tone = Math.sin(x * 0.08 + z * 0.05) * 0.03;
 let r = 0.13 + center * 0.10 + tone;
 let g = 0.42 + center * 0.16 + tone;
 let b = 0.62 + center * 0.20 + tone;
-if (Math.abs(x) > 26) { r = 0.85; g = 0.90; b = 0.97; }      // kıyı karı (beyaz)
+if (Math.abs(x) > 26) { r = 0.72; g = 0.79; b = 0.9; }      // kıyı karı (gölgeli, patlamayan)
 else if (crackNoise(x, z) < 0.04) { r *= 0.45; g *= 0.5; b *= 0.66; }  // çatlak: koyu lacivert damar
 icol.setRGB(r, g, Math.min(1, b));
 icolors[i * 3] = icol.r; icolors[i * 3 + 1] = icol.g; icolors[i * 3 + 2] = icol.b;
@@ -5349,8 +5349,8 @@ let hgt = Math.sin(z * 0.05) * 0.05 + Math.sin(x * 0.2 + z * 0.03) * 0.04;
 if (Math.abs(x) > 22) hgt += (Math.abs(x) - 22) * 0.05 + Math.sin(x * 0.1 + z * 0.05) * 0.25;
 gp.setZ(i, hgt);
 const edge = Math.min(1, Math.max(0, (Math.abs(x) - 16) / 50));
-const s = 0.9 - edge * 0.05;
-gcol.setRGB(s, s + 0.015, Math.min(1, s + 0.05));
+const s = 0.78 - edge * 0.07;
+gcol.setRGB(s, s + 0.02, Math.min(1, s + 0.08));
 gcolors[i * 3] = gcol.r; gcolors[i * 3 + 1] = gcol.g; gcolors[i * 3 + 2] = gcol.b;
 }
 groundGeo.setAttribute('color', new THREE.BufferAttribute(gcolors, 3));
@@ -5546,26 +5546,26 @@ const villageMats = createVillageBiomeMaterials();
 const lakeMats = createFrozenLakeBiomeMaterials();
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
-  bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520,
+  bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520, exposure: 1.3,
   sun: new THREE.Color(0xfff5b6), sunInt: 2.0, hemiSky: new THREE.Color(0xbfe0ff), hemiGround: new THREE.Color(0x6b7a8f), hemiInt: 0.62, skyTop: new THREE.Color(0x2f6fb0) },
 { name: 'cave', makeChunk: () => createIceCaveChunk(caveMats),
-  bg: new THREE.Color(0x071525), fogColor: new THREE.Color(0x0b2233), fogNear: 26, fogFar: 250,
+  bg: new THREE.Color(0x071525), fogColor: new THREE.Color(0x0b2233), fogNear: 26, fogFar: 250, exposure: 1.3,
   sun: new THREE.Color(0x6f9ec9), sunInt: 0.5, hemiSky: new THREE.Color(0x13314a), hemiGround: new THREE.Color(0x05121d), hemiInt: 0.55, skyTop: new THREE.Color(0x081521) },
 { name: 'cliff', makeChunk: () => createCliffCourseChunk(cliffMats),
-  bg: new THREE.Color(0x87b8d5), fogColor: new THREE.Color(0xb6d3e6), fogNear: 130, fogFar: 740,
+  bg: new THREE.Color(0x87b8d5), fogColor: new THREE.Color(0xb6d3e6), fogNear: 130, fogFar: 740, exposure: 1.25,
   sun: new THREE.Color(0xffffff), sunInt: 2.35, hemiSky: new THREE.Color(0xc4e0ff), hemiGround: new THREE.Color(0x5b7488), hemiInt: 0.72, skyTop: new THREE.Color(0x2b6cae) },
 { name: 'forest', makeChunk: () => createForestCourseChunk(forestMats),
   // Ormana girince HAVA değişmesin: gökyüzü/sis/ışık berrak (vadi gibi) kalır, sadece ortam (zemin+ağaçlar) değişir.
-  bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 66, fogFar: 470,
+  bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 66, fogFar: 470, exposure: 1.3,
   sun: new THREE.Color(0xfff5b6), sunInt: 1.95, hemiSky: new THREE.Color(0xbfe0ff), hemiGround: new THREE.Color(0x6f7d68), hemiInt: 0.64, skyTop: new THREE.Color(0x2f6fb0) },
 { name: 'village', makeChunk: () => createVillageChunk(villageMats),
-  // Alp köyü: berrak, hafif sıcak öğleden sonra; sis maviye çekildi ve uzağa itildi (beyaz pus gitti).
-  bg: new THREE.Color(0xaccadf), fogColor: new THREE.Color(0xafcde2), fogNear: 120, fogFar: 730,
-  sun: new THREE.Color(0xfff0d0), sunInt: 1.95, hemiSky: new THREE.Color(0xcfe2f5), hemiGround: new THREE.Color(0x8a8675), hemiInt: 0.62, skyTop: new THREE.Color(0x3a72ad) },
+  // Alp köyü: pozlama + ışık düşürüldü -> beyaz patlama gitti, detay/kontrast belirginleşti.
+  bg: new THREE.Color(0x9cc0da), fogColor: new THREE.Color(0x9fc2da), fogNear: 140, fogFar: 750, exposure: 1.0,
+  sun: new THREE.Color(0xfdebc8), sunInt: 1.55, hemiSky: new THREE.Color(0xbcd6ec), hemiGround: new THREE.Color(0x7c7a6a), hemiInt: 0.48, skyTop: new THREE.Color(0x2f6aa6) },
 { name: 'lake', makeChunk: () => createFrozenLakeChunk(lakeMats),
-  // Donmuş göl: berrak, soğuk, çıtır bir gün; sis maviye çekildi ve uzağa itildi (beyaz pus gitti).
-  bg: new THREE.Color(0xb4d2e6), fogColor: new THREE.Color(0xaccfe4), fogNear: 130, fogFar: 750,
-  sun: new THREE.Color(0xeaf2ff), sunInt: 2.1, hemiSky: new THREE.Color(0xd2e6f5), hemiGround: new THREE.Color(0x8fa6b5), hemiInt: 0.66, skyTop: new THREE.Color(0x4a86bd) }
+  // Donmuş göl: pozlama + ışık düşürüldü -> mavi buz ve çevre netleşti, beyaz patlama gitti.
+  bg: new THREE.Color(0xa6cbe2), fogColor: new THREE.Color(0x9ec6de), fogNear: 150, fogFar: 750, exposure: 1.02,
+  sun: new THREE.Color(0xeaf2ff), sunInt: 1.65, hemiSky: new THREE.Color(0xc4def0), hemiGround: new THREE.Color(0x80929f), hemiInt: 0.5, skyTop: new THREE.Color(0x3f7cb4) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
@@ -5647,6 +5647,10 @@ if (scene.fog) {
 scene.fog.color.copy(a.fogColor).lerp(b.fogColor, t);
 scene.fog.near = a.fogNear + (b.fogNear - a.fogNear) * t;
 scene.fog.far = a.fogFar + (b.fogFar - a.fogFar) * t;
+}
+// Biome'a özel tone-mapping pozlaması: karlı bölgelerde beyaz patlamayı önler.
+if (renderer && a.exposure !== undefined) {
+renderer.toneMappingExposure = a.exposure + ((b.exposure !== undefined ? b.exposure : a.exposure) - a.exposure) * t;
 }
 // Biome'a özel aydınlatma harmanı: güneş + ortam ışığı yumuşakça geçer.
 if (sunLight && a.sun) {
