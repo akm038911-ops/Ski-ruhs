@@ -5087,6 +5087,103 @@ flag.position.set(x + side * 0.5, 1.8, z); flag.rotation.y = side < 0 ? 0 : Math
 return g;
 }
 
+// ===== BULUT KANYONU BIOME (yükseklik / aksiyon) =====
+function createCanyonBiomeMaterials() {
+return {
+rock: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.03 }),
+darkRock: new THREE.MeshStandardMaterial({ color: 0x4a4036, roughness: 0.98 }),
+floor: new THREE.MeshStandardMaterial({ color: 0x2b3a2c, roughness: 1.0 }),
+snow: new THREE.MeshStandardMaterial({ color: 0xeef5ff, roughness: 0.8 }),
+plank: new THREE.MeshStandardMaterial({ color: 0x5a3c28, roughness: 0.9 }),
+rope: new THREE.MeshStandardMaterial({ color: 0x2a2520, roughness: 0.8, metalness: 0.4 }),
+cloud: new THREE.PointsMaterial({ color: 0xffffff, size: 14, map: createSoftCloudTexture(), transparent: true, opacity: 0.5, depthWrite: false }),
+peak: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.02 })
+};
+}
+
+function createSkyCanyonChunk(materials) {
+const chunk = new THREE.Group();
+
+// --- Dar yüksek köprü/yol: x sadece [-17,17] dolu; ötesi boşluk (uçurum) ---
+const pathGeo = new THREE.PlaneGeometry(34, 400, 10, 90);
+const pp = pathGeo.attributes.position;
+const pcol = new Float32Array(pp.count * 3);
+const pc = new THREE.Color();
+for (let i = 0; i < pp.count; i++) {
+const x = pp.getX(i), z = pp.getY(i);
+let h = Math.sin(z * 0.05) * 0.05 + Math.sin(x * 0.3 + z * 0.02) * 0.04;
+const edge = Math.max(0, Math.abs(x) - 12);
+h -= edge * edge * 0.06;            // kenarlar aşağı kıvrılır (uçurum dudağı)
+pp.setZ(i, h);
+const snowy = 1 - Math.min(1, Math.abs(x) / 18);
+const s = 0.5 + snowy * 0.38;
+pc.setRGB(s * 0.9, s * 0.95, Math.min(1, s + 0.07));
+pcol[i * 3] = pc.r; pcol[i * 3 + 1] = pc.g; pcol[i * 3 + 2] = pc.b;
+}
+pathGeo.setAttribute('color', new THREE.BufferAttribute(pcol, 3));
+pp.needsUpdate = true; pathGeo.computeVertexNormals();
+const path = new THREE.Mesh(pathGeo, materials.rock);
+path.rotation.x = -Math.PI / 2; path.receiveShadow = true;
+chunk.add(path);
+
+// --- Korkuluk dikmeleri + üst halat (köprü hissi) ---
+for (const side of [-1, 1]) {
+for (let i = 0; i < 10; i++) {
+const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.4, 0.2), materials.plank);
+post.position.set(side * 16.5, 0.6, -198 + i * 44);
+post.castShadow = true;
+chunk.add(post);
+}
+const rope = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 396), materials.rope);
+rope.position.set(side * 16.5, 1.25, 0);
+chunk.add(rope);
+}
+
+// --- Derin uçurum: çok aşağıda kanyon tabanı ---
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(640, 400, 1, 1), materials.floor);
+floor.rotation.x = -Math.PI / 2; floor.position.y = -95;
+chunk.add(floor);
+
+// --- Bulut katmanı (yol ile taban arasında, aşağıda) ---
+const cloudGeo = new THREE.BufferGeometry();
+const cpos = new Float32Array(120 * 3);
+for (let i = 0; i < 120; i++) { cpos[i * 3] = (Math.random() - 0.5) * 270; cpos[i * 3 + 1] = -22 - Math.random() * 58; cpos[i * 3 + 2] = (Math.random() - 0.5) * 400; }
+cloudGeo.setAttribute('position', new THREE.BufferAttribute(cpos, 3));
+const clouds = new THREE.Points(cloudGeo, materials.cloud); clouds.frustumCulled = false;
+chunk.add(clouds);
+
+// --- Uçurumdan yükselen dev kaya kuleleri (bazıları yolun üstüne çıkar) ---
+const pillarCount = 14;
+for (let i = 0; i < pillarCount; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (24 + Math.random() * 46);
+const z = -200 + (i / pillarCount) * 400 + (Math.random() - 0.5) * 30;
+const top = 4 + Math.random() * 42;
+const height = top + 95;
+const r = 3 + Math.random() * 6;
+const pillar = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.6, r, height, 7, 1), materials.darkRock);
+pillar.position.set(x, top - height / 2, z);
+pillar.castShadow = true; pillar.frustumCulled = false;
+chunk.add(pillar);
+const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.64, r * 0.9, 7), materials.snow);
+cap.position.set(x, top + r * 0.3, z); cap.frustumCulled = false;
+chunk.add(cap);
+}
+
+// --- Üstünden geçilen kaya kemeri (ara sıra) ---
+if (Math.random() < 0.6) {
+const arch = new THREE.Mesh(new THREE.TorusGeometry(20, 2.2, 8, 18, Math.PI), materials.darkRock);
+arch.position.set(0, 0, -120 + Math.random() * 240);
+arch.castShadow = true; arch.frustumCulled = false;
+chunk.add(arch);
+}
+
+// --- Uzak gerçekçi dağlar (ufuk) ---
+addBackdropMountains(chunk, materials.peak);
+
+return chunk;
+}
+
 // ===== DONMUŞ GÖL BIOME =====
 function createFrozenLakeBiomeMaterials() {
 return {
@@ -5583,6 +5680,7 @@ const cliffMats = createCliffBiomeMaterials();
 const forestMats = createForestBiomeMaterials();
 const villageMats = createVillageBiomeMaterials();
 const lakeMats = createFrozenLakeBiomeMaterials();
+const canyonMats = createCanyonBiomeMaterials();
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
   bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520, exposure: 1.3,
@@ -5604,7 +5702,11 @@ worldBiomes = [
 { name: 'lake', makeChunk: () => createFrozenLakeChunk(lakeMats),
   // Donmuş göl: pozlama + ışık düşürüldü -> mavi buz ve çevre netleşti, beyaz patlama gitti.
   bg: new THREE.Color(0xa6cbe2), fogColor: new THREE.Color(0x9ec6de), fogNear: 150, fogFar: 750, exposure: 1.02,
-  sun: new THREE.Color(0xeaf2ff), sunInt: 1.65, hemiSky: new THREE.Color(0xc4def0), hemiGround: new THREE.Color(0x80929f), hemiInt: 0.5, skyTop: new THREE.Color(0x3f7cb4) }
+  sun: new THREE.Color(0xeaf2ff), sunInt: 1.65, hemiSky: new THREE.Color(0xc4def0), hemiGround: new THREE.Color(0x80929f), hemiInt: 0.5, skyTop: new THREE.Color(0x3f7cb4) },
+{ name: 'canyon', makeChunk: () => createSkyCanyonChunk(canyonMats),
+  // Bulut Kanyonu: dar yüksek köprü, derin uçurum, altta bulutlar -> yükseklik korkusu/aksiyon.
+  bg: new THREE.Color(0x7aa6c8), fogColor: new THREE.Color(0xbcd6e8), fogNear: 55, fogFar: 700, exposure: 1.2,
+  sun: new THREE.Color(0xffffff), sunInt: 2.2, hemiSky: new THREE.Color(0xbfe0ff), hemiGround: new THREE.Color(0x4a4236), hemiInt: 0.6, skyTop: new THREE.Color(0x265a93) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
