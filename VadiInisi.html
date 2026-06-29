@@ -1036,10 +1036,12 @@ const shelves = Math.sin(z * 0.097 - x * 0.12) * Math.min(2.6, rise * 0.045);
 return trackWave + mountain + crags + shelves;
 }
 if (x > 20) {
-const drop = x - 20;
-const cliff = -Math.min(78, Math.pow(drop, 0.72) * 4.6);
-const fracture = Math.sin(z * 0.071 + x * 0.35) * Math.min(3.5, drop * 0.12);
-return trackWave + cliff + fracture;
+// Sağ taraf artık aşağı düşen dalgalı yamaç değil, sola benzer gerçek dağ silsilesi.
+const rise = x - 20;
+const mountain = Math.pow(rise, 1.08) * 0.33;
+const crags = Math.sin(z * 0.047 - x * 0.13) * Math.min(6.2, rise * 0.10);
+const shelves = Math.sin(z * 0.089 + x * 0.11) * Math.min(2.8, rise * 0.048);
+return trackWave + mountain + crags + shelves;
 }
 return trackWave + Math.sin(x * 0.28 + z * 0.018) * 0.045;
 }
@@ -1058,12 +1060,10 @@ pos.setZ(i, height);
 if (x >= -20 && x <= 20) {
 const shade = 0.92 + Math.sin(z * 0.055 + x * 0.18) * 0.025;
 color.setRGB(shade, Math.min(1, shade + 0.045), 1.0);
-} else if (x < -20) {
-const snowMix = Math.min(0.72, Math.max(0.08, (height - 5) / 55));
-color.setRGB(0.20 + snowMix * 0.66, 0.26 + snowMix * 0.67, 0.34 + snowMix * 0.62);
 } else {
-const depth = Math.min(1, Math.abs(height) / 65);
-color.setRGB(0.16 - depth * 0.05, 0.22 - depth * 0.05, 0.30 - depth * 0.03);
+// Hem sol hem sağ dağ yamaçları: yükseldikçe karlanan kayalık dağ rengi.
+const snowMix = Math.min(0.74, Math.max(0.08, (height - 5) / 55));
+color.setRGB(0.20 + snowMix * 0.66, 0.26 + snowMix * 0.67, 0.34 + snowMix * 0.62);
 }
 colors[i * 3] = color.r;
 colors[i * 3 + 1] = color.g;
@@ -2106,8 +2106,8 @@ chunk.add(mountainLayerBack, mountainLayerFront);
 const cloudGeo = new THREE.BufferGeometry();
 const cloudPos = new Float32Array(130 * 3);
 for (let i = 0; i < 130; i++) {
-cloudPos[i * 3] = 35 + Math.random() * 120;
-cloudPos[i * 3 + 1] = -28 - Math.random() * 34;
+cloudPos[i * 3] = (Math.random() - 0.5) * 280;
+cloudPos[i * 3 + 1] = 46 + Math.random() * 52;
 cloudPos[i * 3 + 2] = (Math.random() - 0.5) * 410;
 }
 cloudGeo.setAttribute('position', new THREE.BufferAttribute(cloudPos, 3));
@@ -5023,8 +5023,9 @@ worldBiomes = [
   bg: new THREE.Color(0x87b8d5), fogColor: new THREE.Color(0xb6d3e6), fogNear: 130, fogFar: 740,
   sun: new THREE.Color(0xffffff), sunInt: 2.35, hemiSky: new THREE.Color(0xc4e0ff), hemiGround: new THREE.Color(0x5b7488), hemiInt: 0.72, skyTop: new THREE.Color(0x2b6cae) },
 { name: 'forest', makeChunk: () => createForestCourseChunk(forestMats),
-  bg: new THREE.Color(0x223d2e), fogColor: new THREE.Color(0x33503c), fogNear: 48, fogFar: 380,
-  sun: new THREE.Color(0xffe9b0), sunInt: 1.45, hemiSky: new THREE.Color(0xa7c293), hemiGround: new THREE.Color(0x26331d), hemiInt: 0.8, skyTop: new THREE.Color(0x5e8a86) }
+  // Ormana girince HAVA değişmesin: gökyüzü/sis/ışık berrak (vadi gibi) kalır, sadece ortam (zemin+ağaçlar) değişir.
+  bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 66, fogFar: 470,
+  sun: new THREE.Color(0xfff5b6), sunInt: 1.95, hemiSky: new THREE.Color(0xbfe0ff), hemiGround: new THREE.Color(0x6f7d68), hemiInt: 0.64, skyTop: new THREE.Color(0x2f6fb0) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
