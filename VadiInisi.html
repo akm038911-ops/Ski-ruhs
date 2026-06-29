@@ -5118,6 +5118,180 @@ flag.position.set(x + side * 0.5, 1.8, z); flag.rotation.y = side < 0 ? 0 : Math
 return g;
 }
 
+// ===== DONMUŞ GÖL BIOME =====
+function createFrozenLakeBiomeMaterials() {
+return {
+ice: new THREE.MeshPhysicalMaterial({ vertexColors: true, color: 0xffffff, metalness: 0.0, roughness: 0.12, clearcoat: 1.0, clearcoatRoughness: 0.08, emissive: 0x0b3b52, emissiveIntensity: 0.12 }),
+iceBlock: new THREE.MeshPhysicalMaterial({ color: 0x9fd6ef, metalness: 0.0, roughness: 0.18, clearcoat: 0.9, transparent: true, opacity: 0.82, emissive: 0x0e7490, emissiveIntensity: 0.18, side: THREE.DoubleSide }),
+crack: new THREE.MeshBasicMaterial({ color: 0x2b6b86, transparent: true, opacity: 0.5 }),
+hole: new THREE.MeshBasicMaterial({ color: 0x06202e }),
+snow: new THREE.MeshStandardMaterial({ color: 0xf4f9ff, roughness: 0.8 }),
+hutWall: new THREE.MeshStandardMaterial({ color: 0x7b4a2e, roughness: 0.9 }),
+hutRoof: new THREE.MeshStandardMaterial({ color: 0xb33a2b, roughness: 0.8 }),
+wood: new THREE.MeshStandardMaterial({ color: 0x5a3c28, roughness: 0.9 }),
+reed: new THREE.MeshStandardMaterial({ color: 0xcab785, roughness: 0.95 }),
+reedTip: new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.9 }),
+pineTrunk: new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.95 }),
+pineLeaf: new THREE.MeshStandardMaterial({ color: 0x2e4a3a, roughness: 0.9 }),
+peak: new THREE.MeshStandardMaterial({ color: 0xdce8f2, roughness: 0.85 })
+};
+}
+
+function createFrozenLakeChunk(materials) {
+const chunk = new THREE.Group();
+const dummy = new THREE.Object3D();
+
+// --- Buz yüzeyi: düz, parlak; çatlak damarları vertex renklerine işlenir ---
+const iceGeo = new THREE.PlaneGeometry(200, 400, 44, 110);
+const ip = iceGeo.attributes.position;
+const icolors = new Float32Array(ip.count * 3);
+const icol = new THREE.Color();
+const crackNoise = (x, z) => {
+const a = Math.abs(Math.sin(x * 0.12 + Math.sin(z * 0.05) * 2.0));
+const b = Math.abs(Math.sin(z * 0.09 + Math.sin(x * 0.04) * 2.0));
+return Math.min(a, b);
+};
+for (let i = 0; i < ip.count; i++) {
+const x = ip.getX(i), z = ip.getY(i);
+let h = Math.sin(x * 0.05 + z * 0.03) * 0.04 + Math.sin(z * 0.02) * 0.03;
+if (Math.abs(x) > 26) h += (Math.abs(x) - 26) * 0.07;
+ip.setZ(i, h);
+const center = 1 - Math.min(1, Math.abs(x) / 70);
+let r = 0.62 + center * 0.18, g = 0.80 + center * 0.12, b = 0.92 + center * 0.06;
+if (Math.abs(x) > 26) { r = 0.86; g = 0.90; b = 0.96; }
+else if (crackNoise(x, z) < 0.04) { r *= 0.55; g *= 0.62; b *= 0.72; }
+icol.setRGB(r, g, Math.min(1, b));
+icolors[i * 3] = icol.r; icolors[i * 3 + 1] = icol.g; icolors[i * 3 + 2] = icol.b;
+}
+iceGeo.setAttribute('color', new THREE.BufferAttribute(icolors, 3));
+ip.needsUpdate = true; iceGeo.computeVertexNormals();
+const ice = new THREE.Mesh(iceGeo, materials.ice);
+ice.rotation.x = -Math.PI / 2; ice.receiveShadow = true;
+chunk.add(ice);
+
+// --- Belirgin yüzey çatlakları (ince koyu hatlar) ---
+for (let i = 0; i < 6; i++) {
+const crackLine = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 20 + Math.random() * 30), materials.crack);
+crackLine.position.set((Math.random() - 0.5) * 40, 0.06, (Math.random() - 0.5) * 360);
+crackLine.rotation.y = Math.random() * Math.PI;
+chunk.add(crackLine);
+}
+
+// --- Basınç buzulları (yukarı itilmiş buz blokları), kayış koridoru boş kalır ---
+const ridge = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1.0, 0), materials.iceBlock, 30);
+for (let i = 0; i < 30; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (15 + Math.random() * 28);
+const z = (Math.random() - 0.5) * 390;
+const sc = 0.5 + Math.random() * 1.4;
+dummy.position.set(x, 0.2 * sc, z); dummy.scale.set(sc * 1.2, sc * 0.8, sc * 1.2); dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random()); dummy.updateMatrix();
+ridge.setMatrixAt(i, dummy.matrix);
+}
+ridge.castShadow = true; ridge.frustumCulled = false; chunk.add(ridge);
+
+// --- İnce buz dikitleri (shard) ---
+const shards = new THREE.InstancedMesh(new THREE.TetrahedronGeometry(0.8, 0), materials.iceBlock, 26);
+for (let i = 0; i < 26; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (14 + Math.random() * 26);
+const z = (Math.random() - 0.5) * 392;
+const sc = 0.4 + Math.random() * 0.9;
+dummy.position.set(x, 0.25 * sc, z); dummy.scale.set(sc, sc * 1.5, sc); dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random()); dummy.updateMatrix();
+shards.setMatrixAt(i, dummy.matrix);
+}
+shards.frustumCulled = false; chunk.add(shards);
+
+// --- Buz balıkçı kulübeleri (delik + tabure + olta) ---
+function makeIceHut() {
+const hut = new THREE.Group();
+const w = 3.2, ht = 2.6, d = 3.4;
+const body = new THREE.Mesh(new THREE.BoxGeometry(w, ht, d), materials.hutWall); body.position.y = ht / 2; body.castShadow = true; hut.add(body);
+const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.78, 1.6, 4), materials.hutRoof); roof.rotation.y = Math.PI / 4; roof.position.y = ht + 0.7; roof.castShadow = true; hut.add(roof);
+const door = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.6, 0.9), materials.wood); door.position.set(w / 2 + 0.02, 0.8, 0); hut.add(door);
+const hole = new THREE.Mesh(new THREE.CircleGeometry(0.6, 16), materials.hole); hole.rotation.x = -Math.PI / 2; hole.position.set(w / 2 + 2.2, 0.03, 0); hut.add(hole);
+const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.5, 8), materials.wood); stool.position.set(w / 2 + 1.4, 0.25, 0.6); hut.add(stool);
+const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.6, 5), materials.wood); rod.position.set(w / 2 + 1.6, 0.9, 0.3); rod.rotation.z = 0.7; hut.add(rod);
+return hut;
+}
+for (let i = 0; i < 2; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const hut = makeIceHut();
+hut.position.set(side * (22 + Math.random() * 6), 0, -120 + i * 180 + Math.random() * 40);
+hut.rotation.y = (side > 0 ? Math.PI : 0) + (Math.random() - 0.5) * 0.4;
+chunk.add(hut);
+}
+
+// --- İskele (kıyıdan buza uzanan ahşap platform) ---
+const dockSide = Math.random() > 0.5 ? 1 : -1;
+const dock = new THREE.Group();
+const plank = new THREE.Mesh(new THREE.BoxGeometry(11, 0.2, 2.6), materials.wood); plank.position.y = 0.6; plank.castShadow = true; dock.add(plank);
+for (let p = 0; p < 6; p++) {
+const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 1.2, 6), materials.wood);
+post.position.set(-4.5 + p * 1.8, 0.0, (p % 2 ? 1 : -1) * 1.0);
+dock.add(post);
+}
+dock.position.set(dockSide * 25, 0, -60 + Math.random() * 120);
+chunk.add(dock);
+
+// --- Donmuş sazlıklar (kıyı) ---
+const reedCount = 40;
+const reeds = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.05, 2.2, 5), materials.reed, reedCount);
+const reedTips = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.06, 0.5, 6), materials.reedTip, reedCount);
+for (let i = 0; i < reedCount; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (24 + Math.random() * 30);
+const z = (Math.random() - 0.5) * 390;
+const sc = 0.7 + Math.random() * 0.8;
+const lean = (Math.random() - 0.5) * 0.3;
+dummy.position.set(x, 1.1 * sc, z); dummy.scale.set(1, sc, 1); dummy.rotation.set(lean, Math.random() * Math.PI, lean); dummy.updateMatrix();
+reeds.setMatrixAt(i, dummy.matrix);
+dummy.position.set(x, 2.2 * sc, z); dummy.updateMatrix(); reedTips.setMatrixAt(i, dummy.matrix);
+}
+reeds.frustumCulled = false; reedTips.frustumCulled = false; chunk.add(reeds, reedTips);
+
+// --- Karlı kıyı çamları ---
+const pineCount = 16;
+const pTrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.3, 1.5, 6), materials.pineTrunk, pineCount);
+const pLeaf = new THREE.InstancedMesh(new THREE.ConeGeometry(1.6, 4.2, 7), materials.pineLeaf, pineCount);
+const pCap = new THREE.InstancedMesh(new THREE.ConeGeometry(0.55, 0.8, 7), materials.snow, pineCount);
+for (let i = 0; i < pineCount; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (32 + Math.random() * 45);
+const z = (Math.random() - 0.5) * 390;
+const sc = 0.9 + Math.random() * 1.0;
+const baseY = (Math.abs(x) - 26) * 0.07;
+dummy.position.set(x, baseY + 0.75 * sc, z); dummy.scale.set(sc, sc, sc); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
+pTrunk.setMatrixAt(i, dummy.matrix);
+dummy.position.set(x, baseY + 3.6 * sc, z); dummy.updateMatrix(); pLeaf.setMatrixAt(i, dummy.matrix);
+dummy.position.set(x, baseY + 5.8 * sc, z); dummy.updateMatrix(); pCap.setMatrixAt(i, dummy.matrix);
+}
+pTrunk.castShadow = true; pLeaf.castShadow = true;
+pTrunk.frustumCulled = false; pLeaf.frustumCulled = false; pCap.frustumCulled = false;
+chunk.add(pTrunk, pLeaf, pCap);
+
+// --- Uzak karlı zirveler ---
+const peaks = new THREE.InstancedMesh(new THREE.ConeGeometry(30, 58, 5), materials.peak, 8);
+for (let i = 0; i < 8; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (100 + Math.random() * 60);
+const z = -190 + i * 48;
+const sc = 0.8 + Math.random() * 1.0;
+dummy.position.set(x, 13 * sc, z); dummy.scale.set(sc, sc, sc); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
+peaks.setMatrixAt(i, dummy.matrix);
+}
+peaks.frustumCulled = false; chunk.add(peaks);
+
+// --- Buz altı hava kabarcıkları / yüzey parıltısı ---
+const bubGeo = new THREE.BufferGeometry();
+const bub = new Float32Array(60 * 3);
+for (let i = 0; i < 60; i++) { bub[i * 3] = (Math.random() - 0.5) * 48; bub[i * 3 + 1] = 0.05; bub[i * 3 + 2] = (Math.random() - 0.5) * 392; }
+bubGeo.setAttribute('position', new THREE.BufferAttribute(bub, 3));
+const bubMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, transparent: true, opacity: 0.5, depthWrite: false });
+const bubbles = new THREE.Points(bubGeo, bubMat); bubbles.frustumCulled = false; chunk.add(bubbles);
+
+return chunk;
+}
+
 // ===== ALP KÖYÜ BIOME =====
 function createVillageBiomeMaterials() {
 return {
@@ -5396,6 +5570,7 @@ const caveMats = createCaveBiomeMaterials();
 const cliffMats = createCliffBiomeMaterials();
 const forestMats = createForestBiomeMaterials();
 const villageMats = createVillageBiomeMaterials();
+const lakeMats = createFrozenLakeBiomeMaterials();
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
   bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520,
@@ -5413,7 +5588,11 @@ worldBiomes = [
 { name: 'village', makeChunk: () => createVillageChunk(villageMats),
   // Alp köyü: berrak, hafif sıcak öğleden sonra; pencere/lamba ışıkları belirginleşsin.
   bg: new THREE.Color(0xbcd3e6), fogColor: new THREE.Color(0xdfe9f0), fogNear: 70, fogFar: 500,
-  sun: new THREE.Color(0xfff0d0), sunInt: 1.95, hemiSky: new THREE.Color(0xcfe2f5), hemiGround: new THREE.Color(0x8a8675), hemiInt: 0.66, skyTop: new THREE.Color(0x3a72ad) }
+  sun: new THREE.Color(0xfff0d0), sunInt: 1.95, hemiSky: new THREE.Color(0xcfe2f5), hemiGround: new THREE.Color(0x8a8675), hemiInt: 0.66, skyTop: new THREE.Color(0x3a72ad) },
+{ name: 'lake', makeChunk: () => createFrozenLakeChunk(lakeMats),
+  // Donmuş göl: berrak, soğuk, çıtır bir gün; geniş görüş, mavi-buz paleti.
+  bg: new THREE.Color(0xcfe2ee), fogColor: new THREE.Color(0xdfeaf2), fogNear: 80, fogFar: 560,
+  sun: new THREE.Color(0xeaf2ff), sunInt: 2.1, hemiSky: new THREE.Color(0xd2e6f5), hemiGround: new THREE.Color(0x8fa6b5), hemiInt: 0.7, skyTop: new THREE.Color(0x4a86bd) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
