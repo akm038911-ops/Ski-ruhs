@@ -5087,6 +5087,178 @@ flag.position.set(x + side * 0.5, 1.8, z); flag.rotation.y = side < 0 ? 0 : Math
 return g;
 }
 
+// ===== DAĞ DEMİRYOLU BIOME (Subway/tren temalı) =====
+function createRailwayBiomeMaterials() {
+return {
+snow: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }),
+ballast: new THREE.MeshStandardMaterial({ color: 0x3a3a40, roughness: 1.0 }),
+rail: new THREE.MeshStandardMaterial({ color: 0x9aa4ad, metalness: 0.9, roughness: 0.3 }),
+sleeper: new THREE.MeshStandardMaterial({ color: 0x4a3526, roughness: 0.95 }),
+wood: new THREE.MeshStandardMaterial({ color: 0x5a3c28, roughness: 0.9 }),
+metal: new THREE.MeshStandardMaterial({ color: 0x46505a, metalness: 0.7, roughness: 0.4 }),
+loco: new THREE.MeshStandardMaterial({ color: 0x7d1d1d, metalness: 0.3, roughness: 0.5 }),
+wagon: new THREE.MeshStandardMaterial({ color: 0x2f5d3a, metalness: 0.3, roughness: 0.55 }),
+trim: new THREE.MeshStandardMaterial({ color: 0x1a1a1e, metalness: 0.5, roughness: 0.5 }),
+trainWin: new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffcf6b, emissiveIntensity: 0.7, roughness: 0.3 }),
+signalRed: new THREE.MeshBasicMaterial({ color: 0xff3b30 }),
+signalGreen: new THREE.MeshBasicMaterial({ color: 0x34d058 }),
+stone: new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 0.95 }),
+wall: new THREE.MeshStandardMaterial({ color: 0xc9a27a, roughness: 0.85 }),
+roof: new THREE.MeshStandardMaterial({ color: 0x7a2d22, roughness: 0.8 }),
+peak: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 })
+};
+}
+
+// Bir vagon/lokomotif (klonlanabilir)
+function makeRailcar(materials, isLoco) {
+const w = new THREE.Group();
+const len = isLoco ? 9 : 11;
+const body = new THREE.Mesh(new THREE.BoxGeometry(4.2, 3.2, len), isLoco ? materials.loco : materials.wagon);
+body.position.y = 2.3; body.castShadow = true; body.receiveShadow = true; w.add(body);
+const roof = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.4, len), materials.trim); roof.position.y = 4.0; roof.castShadow = true; w.add(roof);
+const winGeo = new THREE.BoxGeometry(0.12, 1.0, 1.4);
+const winN = isLoco ? 2 : 4;
+for (const s of [-1, 1]) for (let k = 0; k < winN; k++) {
+const win = new THREE.Mesh(winGeo, materials.trainWin);
+win.position.set(s * 2.17, 2.7, -(len * 0.34) + k * (len * 0.68 / Math.max(1, winN - 1)));
+w.add(win);
+}
+const wheelGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.4, 12);
+for (const s of [-1, 1]) for (const zz of [-len * 0.3, len * 0.3]) {
+const wheel = new THREE.Mesh(wheelGeo, materials.trim);
+wheel.rotation.z = Math.PI / 2; wheel.position.set(s * 1.9, 0.6, zz); w.add(wheel);
+}
+if (isLoco) {
+const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 1.2, 10), materials.trim);
+chimney.position.set(0, 4.6, -len * 0.32); w.add(chimney);
+const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), materials.trainWin);
+lamp.position.set(0, 2.4, -len * 0.5 - 0.1); w.add(lamp);
+}
+return w;
+}
+
+function createRailwayChunk(materials) {
+const chunk = new THREE.Group();
+const dummy = new THREE.Object3D();
+const laneXs = [-12, 0, 12];
+
+// --- Zemin: karlı demiryolu dolgusu (kenarlar şev) ---
+const groundGeo = new THREE.PlaneGeometry(150, 400, 24, 96);
+const gp = groundGeo.attributes.position;
+const gcol = new Float32Array(gp.count * 3); const gc = new THREE.Color();
+for (let i = 0; i < gp.count; i++) {
+const x = gp.getX(i), z = gp.getY(i);
+const ax = Math.abs(x);
+let h = Math.sin(z * 0.04) * 0.06 + Math.sin(x * 0.2 + z * 0.03) * 0.04;
+if (ax > 20) h -= (ax - 20) * 0.55;        // kenar şev aşağı
+gp.setZ(i, h);
+const edge = Math.min(1, Math.max(0, (ax - 18) / 36));
+const s = 0.86 - edge * 0.22;
+gc.setRGB(s, s + 0.02, Math.min(1, s + 0.06));
+gcol[i * 3] = gc.r; gcol[i * 3 + 1] = gc.g; gcol[i * 3 + 2] = gc.b;
+}
+groundGeo.setAttribute('color', new THREE.BufferAttribute(gcol, 3));
+gp.needsUpdate = true; groundGeo.computeVertexNormals();
+const ground = new THREE.Mesh(groundGeo, materials.snow);
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+chunk.add(ground);
+
+// --- 3 ray hattı (Subway mantığı): her şeritte balast + 2 ray ---
+for (const lx of laneXs) {
+const bal = new THREE.Mesh(new THREE.BoxGeometry(6, 0.2, 400), materials.ballast);
+bal.position.set(lx, 0.1, 0); bal.receiveShadow = true; chunk.add(bal);
+for (const rx of [lx - 1.4, lx + 1.4]) {
+const rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, 400), materials.rail);
+rail.position.set(rx, 0.32, 0); rail.castShadow = true; chunk.add(rail);
+}
+}
+// Traversler (tüm hatlar, instanced)
+const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(4, 0.16, 0.45), materials.sleeper, laneXs.length * 70);
+let si = 0;
+for (const lx of laneXs) for (let i = 0; i < 70; i++) {
+dummy.position.set(lx, 0.2, -198 + i * 5.7); dummy.scale.set(1, 1, 1); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
+sleepers.setMatrixAt(si++, dummy.matrix);
+}
+sleepers.receiveShadow = true; sleepers.frustumCulled = false; chunk.add(sleepers);
+
+// --- Park etmiş tren (bir yan şeritte): lokomotif + 2 vagon ---
+const trainLane = Math.random() > 0.5 ? 12 : -12;
+const loco = makeRailcar(materials, true);
+loco.position.set(trainLane, 0.3, -120 + Math.random() * 60);
+chunk.add(loco);
+for (let k = 1; k <= 2; k++) {
+const wagon = makeRailcar(materials, false);
+wagon.position.set(trainLane, 0.3, loco.position.z + k * 13);
+chunk.add(wagon);
+}
+
+// --- Telgraf direkleri (instanced) ---
+const poleCount = 10;
+const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.16, 6, 6), materials.wood, poleCount);
+const crossArms = new THREE.InstancedMesh(new THREE.BoxGeometry(2.0, 0.16, 0.16), materials.wood, poleCount);
+for (let i = 0; i < poleCount; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * 20.5; const z = -190 + i * 40;
+dummy.position.set(x, 3, z); dummy.scale.set(1, 1, 1); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
+poles.setMatrixAt(i, dummy.matrix);
+dummy.position.set(x, 5.4, z); dummy.updateMatrix(); crossArms.setMatrixAt(i, dummy.matrix);
+}
+poles.castShadow = true; poles.frustumCulled = false; crossArms.frustumCulled = false;
+chunk.add(poles, crossArms);
+
+// --- Sinyal direkleri (kırmızı/yeşil lamba) ---
+for (let i = 0; i < 2; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const sig = new THREE.Group();
+const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 4.2, 8), materials.metal); post.position.y = 2.1; sig.add(post);
+const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.4), materials.trim); head.position.y = 4.0; sig.add(head);
+const red = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), materials.signalRed); red.position.set(0, 4.3, 0.22); sig.add(red);
+const green = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), materials.signalGreen); green.position.set(0, 3.8, 0.22); sig.add(green);
+sig.position.set(side * 18.5, 0, -150 + i * 200);
+chunk.add(sig);
+}
+
+// --- Su kulesi (ara sıra) ---
+if (Math.random() < 0.5) {
+const side = Math.random() > 0.5 ? 1 : -1;
+const tower = new THREE.Group();
+for (let l = 0; l < 4; l++) {
+const leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 5, 0.3), materials.wood);
+leg.position.set((l % 2 ? 1 : -1) * 1.6, 2.5, (l < 2 ? 1 : -1) * 1.6); tower.add(leg);
+}
+const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 3.2, 14), materials.wood); tank.position.y = 6.6; tank.castShadow = true; tower.add(tank);
+const tankRoof = new THREE.Mesh(new THREE.ConeGeometry(2.7, 1.4, 14), materials.roof); tankRoof.position.y = 8.9; tower.add(tankRoof);
+tower.position.set(side * 26, 0, -60 + Math.random() * 120);
+chunk.add(tower);
+}
+
+// --- İstasyon binası (ara sıra) ---
+if (Math.random() < 0.45) {
+const side = Math.random() > 0.5 ? 1 : -1;
+const st = new THREE.Group();
+const body = new THREE.Mesh(new THREE.BoxGeometry(10, 4.2, 7), materials.wall); body.position.y = 2.1; body.castShadow = true; st.add(body);
+const roof = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.5, 8.4), materials.roof); roof.position.y = 4.5; roof.castShadow = true; st.add(roof);
+const platform = new THREE.Mesh(new THREE.BoxGeometry(12, 0.5, 18), materials.stone); platform.position.set(side * -2.5, 0.25, 0); st.add(platform);
+for (let k = 0; k < 3; k++) { const win = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.4, 1.6), materials.trainWin); win.position.set(side * 5.05, 2.2, -2.4 + k * 2.4); st.add(win); }
+st.position.set(side * 22, 0, -30 + Math.random() * 60);
+st.rotation.y = side > 0 ? Math.PI : 0;
+chunk.add(st);
+}
+
+// --- Tünel portalı (ara sıra): taş kemer + kısa karanlık örtü ---
+if (Math.random() < 0.4) {
+const tz = -90 + Math.random() * 180;
+const portal = new THREE.Mesh(new THREE.TorusGeometry(15, 2.6, 8, 20, Math.PI), materials.stone);
+portal.position.set(0, 0, tz); portal.castShadow = true; portal.frustumCulled = false; chunk.add(portal);
+const cover = new THREE.Mesh(new THREE.BoxGeometry(34, 1.5, 18), materials.stone);
+cover.position.set(0, 15.2, tz - 9); cover.frustumCulled = false; chunk.add(cover);
+}
+
+// --- Uzak karlı dağlar (ufuk) ---
+addBackdropMountains(chunk, materials.peak);
+return chunk;
+}
+
 // ===== BULUT KANYONU BIOME (yükseklik / aksiyon) =====
 // Prosedürel kaya dokusu (canvas): gürültü + yatay tabaka + çatlaklar.
 // bumpMap olarak kullanılınca düz kaya, ışık altında gerçek girinti-çıkıntı kazanır.
@@ -5783,6 +5955,7 @@ const forestMats = createForestBiomeMaterials();
 const villageMats = createVillageBiomeMaterials();
 const lakeMats = createFrozenLakeBiomeMaterials();
 const canyonMats = createCanyonBiomeMaterials();
+const railwayMats = createRailwayBiomeMaterials();
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
   bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520, exposure: 1.3,
@@ -5808,7 +5981,11 @@ worldBiomes = [
 { name: 'canyon', makeChunk: () => createSkyCanyonChunk(canyonMats),
   // Buz Kanyonu: karlı köprü, mavi buz duvarlar, gün batımı ufku (sıcak), mavi tepe gök.
   bg: new THREE.Color(0x9bb9d4), fogColor: new THREE.Color(0xe7cea6), fogNear: 60, fogFar: 680, exposure: 1.15,
-  sun: new THREE.Color(0xffd9a8), sunInt: 2.05, hemiSky: new THREE.Color(0xbcd6f0), hemiGround: new THREE.Color(0x5a6e84), hemiInt: 0.6, skyTop: new THREE.Color(0x2a5a92) }
+  sun: new THREE.Color(0xffd9a8), sunInt: 2.05, hemiSky: new THREE.Color(0xbcd6f0), hemiGround: new THREE.Color(0x5a6e84), hemiInt: 0.6, skyTop: new THREE.Color(0x2a5a92) },
+{ name: 'railway', makeChunk: () => createRailwayChunk(railwayMats),
+  // Dağ demiryolu: berrak soğuk gün, karlı dolgu + raylar + tren.
+  bg: new THREE.Color(0xa7c6dd), fogColor: new THREE.Color(0xcddce8), fogNear: 90, fogFar: 660, exposure: 1.12,
+  sun: new THREE.Color(0xfff2d6), sunInt: 1.95, hemiSky: new THREE.Color(0xc4dcf0), hemiGround: new THREE.Color(0x73797f), hemiInt: 0.6, skyTop: new THREE.Color(0x356fa8) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
