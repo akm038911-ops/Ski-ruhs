@@ -5087,6 +5087,148 @@ flag.position.set(x + side * 0.5, 1.8, z); flag.rotation.y = side < 0 ? 0 : Math
 return g;
 }
 
+// ===== KARLI ANTİK HARABELER / KAYIP TAPINAK BIOME =====
+function createRuinsBiomeMaterials() {
+return {
+ground: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
+stone: new THREE.MeshStandardMaterial({ color: 0xb9a888, roughness: 0.94 }),
+stoneDark: new THREE.MeshStandardMaterial({ color: 0x8c7d63, roughness: 0.96 }),
+snow: new THREE.MeshStandardMaterial({ color: 0xeef4fb, roughness: 0.82 }),
+gold: new THREE.MeshStandardMaterial({ color: 0xcaa24a, metalness: 0.6, roughness: 0.4, emissive: 0x3a2c0c, emissiveIntensity: 0.3 }),
+flame: new THREE.MeshStandardMaterial({ color: 0xff8a2a, emissive: 0xff5a14, emissiveIntensity: 1.6, roughness: 0.5 }),
+banner: new THREE.MeshStandardMaterial({ color: 0x8a2f2f, roughness: 0.8, side: THREE.DoubleSide }),
+peak: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 })
+};
+}
+
+function makeRuinColumn(materials, h, broken) {
+const col = new THREE.Group();
+const base = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.9, 3.2), materials.stoneDark); base.position.y = 0.45; base.castShadow = true; col.add(base);
+const eh = broken ? h * (0.4 + Math.random() * 0.3) : h;
+const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.18, eh, 14), materials.stone); drum.position.y = 0.9 + eh / 2; drum.castShadow = true; col.add(drum);
+if (!broken) {
+const cap = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.0, 3.0), materials.stoneDark); cap.position.y = 0.9 + eh + 0.5; cap.castShadow = true; col.add(cap);
+const snow = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.2, 3.05), materials.snow); snow.position.y = 0.9 + eh + 1.05; col.add(snow);
+} else {
+const jag = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 2.0), materials.stone); jag.position.y = 0.9 + eh + 0.2; jag.rotation.set(0.2, 0.4, 0.15); jag.castShadow = true; col.add(jag);
+}
+return col;
+}
+
+function makeRuinStatue(materials) {
+const s = new THREE.Group();
+const ped = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.4, 4.5), materials.stoneDark); ped.position.y = 1.2; ped.castShadow = true; s.add(ped);
+const robe = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.4, 5.5, 10), materials.stone); robe.position.y = 5.1; robe.castShadow = true; s.add(robe);
+const chest = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 2), materials.stone); chest.position.y = 7.4; s.add(chest);
+const head = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.8, 1.4), materials.stone); head.position.y = 9.2; head.castShadow = true; s.add(head);
+const crown = new THREE.Mesh(new THREE.ConeGeometry(1.0, 1.2, 4), materials.gold); crown.position.y = 10.5; s.add(crown);
+for (const sx of [-1, 1]) { const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 4, 8), materials.stone); arm.position.set(sx * 2.0, 6.2, 0.4); arm.rotation.x = 0.5; arm.castShadow = true; s.add(arm); }
+const snow = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.2, 2.1), materials.snow); snow.position.y = 8.45; s.add(snow);
+return s;
+}
+
+function makeRuinGate(materials) {
+const gate = new THREE.Group();
+for (const sx of [-1, 1]) {
+const pylon = new THREE.Mesh(new THREE.BoxGeometry(4.5, 19, 5.5), materials.stone); pylon.position.set(sx * 12, 9.5, 0); pylon.castShadow = true; gate.add(pylon);
+const trim = new THREE.Mesh(new THREE.BoxGeometry(5, 1, 6), materials.gold); trim.position.set(sx * 12, 19.6, 0); gate.add(trim);
+}
+const lintel = new THREE.Mesh(new THREE.BoxGeometry(30, 3.2, 5.5), materials.stoneDark); lintel.position.y = 21; lintel.castShadow = true; gate.add(lintel);
+const snow = new THREE.Mesh(new THREE.BoxGeometry(30.5, 0.25, 6), materials.snow); snow.position.y = 22.7; gate.add(snow);
+const banner = new THREE.Mesh(new THREE.PlaneGeometry(3, 7), materials.banner); banner.position.set(0, 16, 2.9); gate.add(banner);
+return gate;
+}
+
+function makeRuinBrazier(materials) {
+const b = new THREE.Group();
+const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.7, 2.6, 8), materials.stoneDark); stand.position.y = 1.3; stand.castShadow = true; b.add(stand);
+const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.5, 0.8, 12), materials.gold); bowl.position.y = 2.8; b.add(bowl);
+const flame = new THREE.Mesh(new THREE.ConeGeometry(0.8, 1.9, 8), materials.flame); flame.position.y = 3.9; flame.frustumCulled = false; b.add(flame);
+return b;
+}
+
+function createRuinsChunk(materials) {
+const chunk = new THREE.Group();
+const dummy = new THREE.Object3D();
+
+// --- Zemin: taş döşeme (derzli) + kar lekeleri ---
+const g = new THREE.PlaneGeometry(150, 400, 30, 100);
+const p = g.attributes.position;
+const cols = new Float32Array(p.count * 3); const c = new THREE.Color();
+for (let i = 0; i < p.count; i++) {
+const x = p.getX(i), z = p.getY(i); const nz = (z + 200) / 25;
+let h = Math.sin(z * 0.04) * 0.05 + Math.sin(x * 0.25) * 0.03;
+if (Math.abs(x) > 22) h += (Math.abs(x) - 22) * 0.04;
+p.setZ(i, h);
+const grid = (Math.abs(Math.sin(x * 0.5)) < 0.12 || Math.abs(Math.sin(z * 0.5)) < 0.12) ? 0.82 : 1.0;
+const snow = cFbm(x * 0.04, nz, 4.4) > 0.55;
+let r, gg, b;
+if (snow) { r = 0.9; gg = 0.93; b = 0.97; }
+else { const base = 0.62 * grid; r = base * 0.98; gg = base * 0.92; b = base * 0.78; }
+c.setRGB(r, gg, b); cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+}
+g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); p.needsUpdate = true; g.computeVertexNormals();
+const ground = new THREE.Mesh(g, materials.ground); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; chunk.add(ground);
+
+// --- Kolonad: yolun iki yanında dev sütun sırası (klonlanır) ---
+const colBases = [makeRuinColumn(materials, 9, false), makeRuinColumn(materials, 11.5, false), makeRuinColumn(materials, 7, true)];
+for (const side of [-1, 1]) for (let i = 0; i < 6; i++) {
+const b = colBases[Math.floor(Math.random() * colBases.length)].clone();
+b.position.set(side * 17, 0, -190 + i * 64 + (Math.random() - 0.5) * 10);
+b.rotation.y = Math.random() * 0.12;
+b.scale.setScalar(0.9 + Math.random() * 0.4);
+chunk.add(b);
+}
+// devrik sütunlar (yatan)
+for (let i = 0; i < 3; i++) {
+const side = i % 2 ? 1 : -1;
+const fallen = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.1, 8 + Math.random() * 4, 12), materials.stone);
+fallen.rotation.z = Math.PI / 2; fallen.rotation.y = Math.random() * Math.PI;
+fallen.position.set(side * (20 + Math.random() * 8), 1.0, (Math.random() - 0.5) * 360); fallen.castShadow = true; chunk.add(fallen);
+}
+
+// --- Kolosal muhafız heykelleri ---
+const statueBase = makeRuinStatue(materials);
+for (let i = 0; i < 2; i++) {
+const side = i % 2 ? 1 : -1;
+const st = statueBase.clone();
+st.position.set(side * 26, 0, -80 + i * 160);
+st.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+st.scale.setScalar(1.0 + Math.random() * 0.3);
+chunk.add(st);
+}
+
+// --- Dev anıtsal kapı (ara sıra, yolun üstünden geçilir) ---
+if (Math.random() < 0.5) {
+const gate = makeRuinGate(materials);
+gate.position.set(0, 0, -100 + Math.random() * 200);
+chunk.add(gate);
+}
+
+// --- Ateş mangalları (yanan alev) ---
+for (let i = 0; i < 6; i++) {
+const side = i % 2 ? 1 : -1;
+const br = makeRuinBrazier(materials);
+br.position.set(side * 14.5, 0, -180 + i * 72);
+chunk.add(br);
+}
+
+// --- Moloz (instanced) ---
+const rubble = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.8, 1.2), materials.stoneDark, 30);
+for (let i = 0; i < 30; i++) {
+const side = i % 2 ? 1 : -1;
+dummy.position.set(side * (15 + Math.random() * 30), 0.4, (Math.random() - 0.5) * 390);
+dummy.scale.set(0.6 + Math.random() * 1.6, 0.6 + Math.random() * 1.2, 0.6 + Math.random() * 1.6);
+dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random()); dummy.updateMatrix();
+rubble.setMatrixAt(i, dummy.matrix);
+}
+rubble.castShadow = true; rubble.frustumCulled = false; chunk.add(rubble);
+
+// --- Uzak karlı dağlar ---
+addBackdropMountains(chunk, materials.peak);
+return chunk;
+}
+
 // ===== JEOTERMAL / KAPLICA VADİSİ BIOME =====
 function createGeothermalBiomeMaterials() {
 return {
@@ -6066,6 +6208,7 @@ const lakeMats = createFrozenLakeBiomeMaterials();
 const canyonMats = createCanyonBiomeMaterials();
 const railwayMats = createRailwayBiomeMaterials();
 const geothermalMats = createGeothermalBiomeMaterials();
+const ruinsMats = createRuinsBiomeMaterials();
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
   bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520, exposure: 1.3,
@@ -6099,7 +6242,11 @@ worldBiomes = [
 { name: 'geothermal', makeChunk: () => createGeothermalChunk(geothermalMats),
   // Jeotermal/kaplıca vadisi: buharlı, ılık; turkuaz havuzlar ve fumarol parıltısı.
   bg: new THREE.Color(0x9fb8c4), fogColor: new THREE.Color(0xd2dad6), fogNear: 55, fogFar: 600, exposure: 1.12,
-  sun: new THREE.Color(0xfff0d8), sunInt: 1.85, hemiSky: new THREE.Color(0xbcd0d4), hemiGround: new THREE.Color(0x4a4642), hemiInt: 0.62, skyTop: new THREE.Color(0x3a6a86) }
+  sun: new THREE.Color(0xfff0d8), sunInt: 1.85, hemiSky: new THREE.Color(0xbcd0d4), hemiGround: new THREE.Color(0x4a4642), hemiInt: 0.62, skyTop: new THREE.Color(0x3a6a86) },
+{ name: 'ruins', makeChunk: () => createRuinsChunk(ruinsMats),
+  // Karlı antik harabeler: sıcak/altın ihtişam ışığı, anıtsal kapı + heykeller + ateşler.
+  bg: new THREE.Color(0xb7b0a2), fogColor: new THREE.Color(0xd9caa6), fogNear: 70, fogFar: 640, exposure: 1.18,
+  sun: new THREE.Color(0xffe0a8), sunInt: 2.1, hemiSky: new THREE.Color(0xccd2d8), hemiGround: new THREE.Color(0x6b5e48), hemiInt: 0.6, skyTop: new THREE.Color(0x3a5f86) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
