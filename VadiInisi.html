@@ -5088,30 +5088,70 @@ return g;
 }
 
 // ===== GÖKYÜZÜ ADALARI BIOME (yüzen kara, bulut denizi) =====
+// Prosedürel çimen dokusu (canvas): gürültü + çim bıçakları -> bump için.
+function createProceduralGrassTexture() {
+const c = document.createElement('canvas'); c.width = c.height = 128;
+const ctx = c.getContext('2d');
+ctx.fillStyle = '#9fb88c'; ctx.fillRect(0, 0, 128, 128);
+const img = ctx.getImageData(0, 0, 128, 128); const d = img.data;
+for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - 0.5) * 52; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+ctx.putImageData(img, 0, 0);
+ctx.strokeStyle = 'rgba(40,60,30,0.3)';
+for (let i = 0; i < 280; i++) { ctx.lineWidth = Math.random() * 1.2; const x = Math.random() * 128, y = Math.random() * 128; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random() - 0.5) * 3, y - 2 - Math.random() * 4); ctx.stroke(); }
+const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(12, 30); return t;
+}
+
 function createSkyIslandBiomeMaterials() {
+const rockTex = createProceduralRockTexture();
+const grassTex = createProceduralGrassTexture();
 return {
-grass: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }),
-keel: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.97, side: THREE.DoubleSide }),
-islandTop: new THREE.MeshStandardMaterial({ color: 0xd2e4d2, roughness: 0.9 }),
-rock: new THREE.MeshStandardMaterial({ color: 0x6b5a4a, roughness: 0.97 }),
-foliage: new THREE.MeshStandardMaterial({ color: 0x4f8a55, roughness: 0.9 }),
-water: new THREE.MeshStandardMaterial({ color: 0x9fd6f2, transparent: true, opacity: 0.55, roughness: 0.2, metalness: 0.1, side: THREE.DoubleSide, emissive: 0x2a6a86, emissiveIntensity: 0.2 }),
-cloudSea: new THREE.MeshStandardMaterial({ color: 0xeaf2fb, roughness: 1.0, emissive: 0xbcd0e4, emissiveIntensity: 0.25 }),
-cloud: new THREE.PointsMaterial({ color: 0xffffff, size: 16, map: createSoftCloudTexture(), transparent: true, opacity: 0.5, depthWrite: false }),
+grass: new THREE.MeshStandardMaterial({ vertexColors: true, bumpMap: grassTex, bumpScale: 0.3, roughness: 0.92 }),
+keel: new THREE.MeshStandardMaterial({ vertexColors: true, bumpMap: rockTex, bumpScale: 0.8, roughness: 0.97, side: THREE.DoubleSide }),
+islandTop: new THREE.MeshStandardMaterial({ color: 0xcfe3cf, bumpMap: grassTex, bumpScale: 0.25, roughness: 0.92 }),
+rock: new THREE.MeshStandardMaterial({ color: 0x6b5a4a, bumpMap: rockTex, bumpScale: 0.7, roughness: 0.97 }),
+bark: new THREE.MeshStandardMaterial({ color: 0x4a3324, roughness: 0.95 }),
+leaf: new THREE.MeshStandardMaterial({ color: 0x3f7a4a, roughness: 0.85 }),
+leafSnow: new THREE.MeshStandardMaterial({ color: 0xeef6f0, roughness: 0.8 }),
+tuft: new THREE.MeshStandardMaterial({ color: 0x4f8a55, roughness: 0.9 }),
+flower: new THREE.MeshStandardMaterial({ color: 0xffd24a, emissive: 0x4a3200, emissiveIntensity: 0.25, roughness: 0.6 }),
+water: new THREE.MeshStandardMaterial({ color: 0xaee0f5, transparent: true, opacity: 0.5, roughness: 0.18, metalness: 0.1, side: THREE.DoubleSide, emissive: 0x2a6a86, emissiveIntensity: 0.25 }),
+waterTop: new THREE.MeshStandardMaterial({ color: 0x9fd6f2, emissive: 0x2a8aa6, emissiveIntensity: 0.4, roughness: 0.15, metalness: 0.2, side: THREE.DoubleSide }),
+cloudSea: new THREE.MeshStandardMaterial({ color: 0xeef4fc, roughness: 1.0, emissive: 0xc4d6e8, emissiveIntensity: 0.3 }),
+cloud: new THREE.PointsMaterial({ color: 0xffffff, size: 18, map: createSoftCloudTexture(), transparent: true, opacity: 0.5, depthWrite: false }),
+mist: new THREE.PointsMaterial({ color: 0xffffff, size: 6, map: createSoftCloudTexture(), transparent: true, opacity: 0.45, depthWrite: false }),
 wood: new THREE.MeshStandardMaterial({ color: 0x5a3c28, roughness: 0.9 }),
 rope: new THREE.MeshStandardMaterial({ color: 0x2a2520, roughness: 0.8 })
 };
 }
 
+function makeIslandTree(materials) {
+const t = new THREE.Group();
+const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, 1.6, 6), materials.bark); trunk.position.y = 0.8; trunk.castShadow = true; t.add(trunk);
+for (let i = 0; i < 3; i++) { const r = 1.4 - i * 0.4; const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 1.5, 8), materials.leaf); cone.position.y = 1.6 + i * 0.9; cone.castShadow = true; t.add(cone); }
+const cap = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.7, 8), materials.leafSnow); cap.position.y = 1.6 + 2 * 0.9 + 0.6; t.add(cap);
+return t;
+}
+
 function makeFloatingIsland(materials, topR, keel) {
 const isl = new THREE.Group();
-const top = new THREE.Mesh(new THREE.CylinderGeometry(topR, topR * 0.9, 1.0, 12), materials.islandTop); top.castShadow = true; isl.add(top);
-const body = new THREE.Mesh(new THREE.ConeGeometry(topR * 0.9, keel, 9), materials.rock); body.position.y = -keel / 2 - 0.3; body.castShadow = true; isl.add(body);
-for (let i = 0; i < 3; i++) {
-const t = new THREE.Mesh(new THREE.ConeGeometry(0.8, 2.4, 6), materials.foliage);
-const a = Math.random() * Math.PI * 2, rr = Math.random() * topR * 0.6;
-t.position.set(Math.cos(a) * rr, 1.7, Math.sin(a) * rr); isl.add(t);
+const topGeo = new THREE.CylinderGeometry(topR, topR * 0.92, 1.2, 18, 1);
+const tp = topGeo.attributes.position;
+for (let i = 0; i < tp.count; i++) { const y = tp.getY(i); if (y > 0.2) { const x = tp.getX(i), z = tp.getZ(i); tp.setY(i, y + Math.sin(x * 1.6 + z * 1.6) * 0.18); } }
+tp.needsUpdate = true; topGeo.computeVertexNormals();
+const top = new THREE.Mesh(topGeo, materials.islandTop); top.castShadow = true; top.receiveShadow = true; isl.add(top);
+const keelGeo = new THREE.ConeGeometry(topR * 0.92, keel, 11, 4);
+const kp = keelGeo.attributes.position;
+for (let i = 0; i < kp.count; i++) {
+let x = kp.getX(i), y = kp.getY(i), z = kp.getZ(i);
+const hN = (y + keel / 2) / keel; const rad = Math.sqrt(x * x + z * z); const ang = Math.atan2(z, x);
+const disp = (Math.sin(ang * 4 + y * 0.6) * 0.5 + Math.sin(ang * 9) * 0.3) * topR * 0.13 * (1 - hN * 0.3);
+if (rad > 0.01) { x += (x / rad) * disp; z += (z / rad) * disp; }
+kp.setXYZ(i, x, y, z);
 }
+kp.needsUpdate = true; keelGeo.computeVertexNormals();
+const body = new THREE.Mesh(keelGeo, materials.rock); body.position.y = -keel / 2 - 0.3; body.castShadow = true; isl.add(body);
+const tn = 2 + Math.floor(Math.random() * 3);
+for (let i = 0; i < tn; i++) { const tr = makeIslandTree(materials); const a = Math.random() * Math.PI * 2, rr = Math.random() * topR * 0.6; tr.position.set(Math.cos(a) * rr, 0.6, Math.sin(a) * rr); tr.scale.setScalar(0.7 + Math.random() * 0.6); isl.add(tr); }
 return isl;
 }
 
@@ -5133,41 +5173,65 @@ function createSkyIslandChunk(materials) {
 const chunk = new THREE.Group();
 const dummy = new THREE.Object3D();
 
-// --- Merkez yüzen kara: üst (karlı çimen) ---
-const topGeo = new THREE.PlaneGeometry(36, 400, 18, 100);
+// --- Merkez kara: üst (çimen + kar, hafif dalgalı) ---
+const topGeo = new THREE.PlaneGeometry(36, 400, 24, 110);
 const tp = topGeo.attributes.position; const tcol = new Float32Array(tp.count * 3); const tc = new THREE.Color();
 for (let i = 0; i < tp.count; i++) {
-const x = tp.getX(i), z = tp.getY(i);
-let h = Math.sin(z * 0.05) * 0.05 + Math.sin(x * 0.3) * 0.04;
-const edge = Math.max(0, Math.abs(x) - 13); h -= edge * edge * 0.04;
+const x = tp.getX(i), z = tp.getY(i); const nz = (z + 200) / 25;
+let h = (cFbm(x * 0.05, nz, 4.1) - 0.5) * 1.5;
+const edge = Math.max(0, Math.abs(x) - 13); h -= edge * edge * 0.05;
 tp.setZ(i, h);
-const snow = 1 - Math.min(1, Math.abs(x) / 18);
-tc.setRGB(0.7 + snow * 0.2, 0.82 + snow * 0.12, 0.72 + snow * 0.18);
+const snowMix = Math.min(1, Math.max(0, h * 0.7 + (cFbm(x * 0.1, nz, 8.8) - 0.45) * 1.6 + (Math.abs(x) / 18) * 0.3));
+let r = 0.40, g = 0.58, b = 0.40;
+r += (0.93 - r) * snowMix; g += (0.96 - g) * snowMix; b += (0.99 - b) * snowMix;
+tc.setRGB(r, g, b);
 tcol[i * 3] = tc.r; tcol[i * 3 + 1] = tc.g; tcol[i * 3 + 2] = tc.b;
 }
 topGeo.setAttribute('color', new THREE.BufferAttribute(tcol, 3)); tp.needsUpdate = true; topGeo.computeVertexNormals();
 const top = new THREE.Mesh(topGeo, materials.grass); top.rotation.x = -Math.PI / 2; top.receiveShadow = true; chunk.add(top);
 
-// --- Merkez yüzen kara: alt kaya gövde (keel) ---
-const keelGeo = new THREE.PlaneGeometry(36, 400, 18, 100);
-const kp = keelGeo.attributes.position; const kcol = new Float32Array(kp.count * 3); const kc = new THREE.Color();
+// --- Merkez kara: alt kayalık gövde (çok-oktavlı + eğim/AO renkli) ---
+const keelGeo = new THREE.PlaneGeometry(36, 400, 24, 110);
+const kp = keelGeo.attributes.position;
 for (let i = 0; i < kp.count; i++) {
-const x = kp.getX(i), z = kp.getY(i); const ax = Math.abs(x);
-const depth = -16 * Math.pow(1 - Math.min(1, ax / 18), 1.3) - 1;
-const crag = Math.sin(x * 0.6 + z * 0.1) * 1.2 + Math.sin(z * 0.2) * 0.8;
-kp.setZ(i, depth + crag * (1 - ax / 18));
-const d = Math.min(1, -depth / 17);
-kc.setRGB(0.42 - d * 0.2, 0.36 - d * 0.16, 0.30 - d * 0.12);
+const x = kp.getX(i), z = kp.getY(i); const ax = Math.abs(x); const nz = (z + 200) / 25;
+let depth = -16 * Math.pow(1 - Math.min(1, ax / 18), 1.3) - 1;
+depth += (cFbm(x * 0.08, nz, 12.2) - 0.5) * 7 * (1 - ax / 18);
+kp.setZ(i, depth);
+}
+kp.needsUpdate = true; keelGeo.computeVertexNormals();
+const knor = keelGeo.attributes.normal; const kcol = new Float32Array(kp.count * 3); const kc = new THREE.Color();
+for (let i = 0; i < kp.count; i++) {
+const y = kp.getZ(i);
+const d = Math.min(1, Math.max(0, -y / 17));
+const slope = Math.min(1, Math.max(0, 1 - knor.getZ(i)));
+let r = 0.46 - d * 0.24, g = 0.40 - d * 0.20, b = 0.33 - d * 0.16;
+const moss = Math.max(0, 1 - d * 3.2) * 0.55;
+r += (0.34 - r) * moss; g += (0.55 - g) * moss; b += (0.30 - b) * moss;
+const sh = 1 - slope * 0.26; r *= sh; g *= sh; b *= sh;
+kc.setRGB(Math.max(0, r), Math.max(0, g), Math.max(0, b));
 kcol[i * 3] = kc.r; kcol[i * 3 + 1] = kc.g; kcol[i * 3 + 2] = kc.b;
 }
-keelGeo.setAttribute('color', new THREE.BufferAttribute(kcol, 3)); kp.needsUpdate = true; keelGeo.computeVertexNormals();
+keelGeo.setAttribute('color', new THREE.BufferAttribute(kcol, 3));
 const keel = new THREE.Mesh(keelGeo, materials.keel); keel.rotation.x = -Math.PI / 2; chunk.add(keel);
 
-// --- Bulut denizi (çok aşağıda) + bulut katmanı ---
-const sea = new THREE.Mesh(new THREE.PlaneGeometry(720, 400, 1, 1), materials.cloudSea);
-sea.rotation.x = -Math.PI / 2; sea.position.y = -70; chunk.add(sea);
-const cloudGeo = new THREE.BufferGeometry(); const cp = new Float32Array(90 * 3);
-for (let i = 0; i < 90; i++) { cp[i * 3] = (Math.random() - 0.5) * 360; cp[i * 3 + 1] = -18 - Math.random() * 46; cp[i * 3 + 2] = (Math.random() - 0.5) * 400; }
+// --- Çimen tutamları + çiçekler (instanced) + kenar ağaçları ---
+const tufts = new THREE.InstancedMesh(new THREE.ConeGeometry(0.35, 0.9, 5), materials.tuft, 40);
+for (let i = 0; i < 40; i++) { const x = (Math.random() - 0.5) * 30; const z = (Math.random() - 0.5) * 392; dummy.position.set(x, 0.4, z); dummy.scale.set(1, 0.7 + Math.random() * 0.8, 1); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix(); tufts.setMatrixAt(i, dummy.matrix); }
+tufts.frustumCulled = false; chunk.add(tufts);
+const flowers = new THREE.InstancedMesh(new THREE.SphereGeometry(0.18, 6, 5), materials.flower, 16);
+for (let i = 0; i < 16; i++) { const x = (Math.random() - 0.5) * 28; const z = (Math.random() - 0.5) * 390; dummy.position.set(x, 0.5, z); dummy.scale.set(1, 1, 1); dummy.rotation.set(0, 0, 0); dummy.updateMatrix(); flowers.setMatrixAt(i, dummy.matrix); }
+flowers.frustumCulled = false; chunk.add(flowers);
+for (let i = 0; i < 5; i++) { const side = i % 2 ? 1 : -1; const tr = makeIslandTree(materials); tr.position.set(side * (14.5 + Math.random() * 2.5), 0, -180 + i * 90 + (Math.random() - 0.5) * 30); tr.scale.setScalar(0.8 + Math.random() * 0.6); chunk.add(tr); }
+
+// --- Dalgalanan bulut denizi (çok aşağıda) + bulutlar ---
+const seaGeo = new THREE.PlaneGeometry(760, 400, 44, 40);
+const sp = seaGeo.attributes.position;
+for (let i = 0; i < sp.count; i++) { const x = sp.getX(i), z = sp.getY(i); sp.setZ(i, Math.sin(x * 0.05) * 1.6 + Math.sin(z * 0.04) * 1.4 + (cFbm(x * 0.02 + 50, (z + 200) / 25, 2.2) - 0.5) * 5); }
+sp.needsUpdate = true; seaGeo.computeVertexNormals();
+const sea = new THREE.Mesh(seaGeo, materials.cloudSea); sea.rotation.x = -Math.PI / 2; sea.position.y = -70; sea.frustumCulled = false; chunk.add(sea);
+const cloudGeo = new THREE.BufferGeometry(); const cp = new Float32Array(110 * 3);
+for (let i = 0; i < 110; i++) { cp[i * 3] = (Math.random() - 0.5) * 380; cp[i * 3 + 1] = -16 - Math.random() * 48; cp[i * 3 + 2] = (Math.random() - 0.5) * 400; }
 cloudGeo.setAttribute('position', new THREE.BufferAttribute(cp, 3));
 const clouds = new THREE.Points(cloudGeo, materials.cloud); clouds.frustumCulled = false; chunk.add(clouds);
 
@@ -5183,13 +5247,16 @@ isl.position.set(ix, iy, iz); chunk.add(isl);
 chunk.add(makeSkyBridge(materials, side * 16, 0, ix - side * (topR * 0.7), iy, iz));
 }
 
-// --- Şelaleler (kenardan buluta dökülen) + dip sis ---
+// --- Şelaleler (çok katmanlı) + üst gölet + dip sisi ---
+const mistPts = [];
 for (let i = 0; i < 2; i++) {
 const side = i % 2 ? 1 : -1;
 const wz = (Math.random() - 0.5) * 340;
-const wf = new THREE.Mesh(new THREE.PlaneGeometry(4, 52), materials.water);
-wf.position.set(side * 18, -24, wz); wf.rotation.y = Math.PI / 2; wf.frustumCulled = false; chunk.add(wf);
+for (let s = 0; s < 3; s++) { const strand = new THREE.Mesh(new THREE.PlaneGeometry(1.1 + Math.random(), 54), materials.water); strand.position.set(side * 18, -25, wz + (s - 1) * 1.3); strand.rotation.y = Math.PI / 2; strand.frustumCulled = false; chunk.add(strand); }
+const pool = new THREE.Mesh(new THREE.CircleGeometry(2.4, 14), materials.waterTop); pool.rotation.x = -Math.PI / 2; pool.position.set(side * 16.5, 0.15, wz); chunk.add(pool);
+for (let m = 0; m < 14; m++) mistPts.push(side * 18 + (Math.random() - 0.5) * 5, -48 + Math.random() * 8, wz + (Math.random() - 0.5) * 6);
 }
+if (mistPts.length) { const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(mistPts), 3)); const mist = new THREE.Points(mg, materials.mist); mist.frustumCulled = false; chunk.add(mist); }
 
 // --- Uzak süzülen adalar (derinlik) ---
 for (let i = 0; i < 5; i++) {
