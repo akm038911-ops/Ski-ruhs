@@ -5698,29 +5698,28 @@ return chunk;
 
 // Gerçekçi backdrop dağı: düzensiz silüet + kaya tabanı + tepede kar (vertex renkleri).
 function createSnowyPeakGeometry(seed) {
-const geo = new THREE.ConeGeometry(1, 1.9, 10, 6);
+const geo = new THREE.ConeGeometry(1, 2.0, 20, 14);
 const pos = geo.attributes.position;
 const colors = new Float32Array(pos.count * 3);
 const col = new THREE.Color();
 for (let i = 0; i < pos.count; i++) {
 let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-const hN = (y + 0.95) / 1.9;
+const hN = (y + 1.0) / 2.0;                 // 0 taban .. 1 tepe
 const ang = Math.atan2(z, x);
 const rad = Math.sqrt(x * x + z * z);
-// düzensiz silüet: koniyi bozan yatay/dikey gürültü (tepeye doğru azalır)
-const disp = (Math.sin(ang * 3 + y * 4 + seed) * 0.13 + Math.sin(ang * 7 + seed) * 0.06) * (1 - hN * 0.55);
+// çok-oktavlı düzensizlik: büyük sırtlar + orta + ince detay (tepeye azalır)
+let disp = 0, amp = 0.17, f = 1;
+for (let o = 0; o < 4; o++) { disp += Math.sin(ang * (3 * f) + y * (2.5 * f) + seed * (o + 1.3)) * amp; amp *= 0.5; f *= 1.9; }
+disp *= (1 - hN * 0.5);
 if (rad > 0.001) { x += (x / rad) * disp; z += (z / rad) * disp; }
-y += Math.sin(ang * 5 + seed) * 0.05 * (1 - hN);
+y += Math.sin(ang * 6 + seed) * 0.05 * (1 - hN);
 pos.setXYZ(i, x, y, z);
-// kaya (alt) -> kar (üst) + tabaka deseni
-const snowMix = Math.min(1, Math.max(0, (hN - 0.5) / 0.32));
-const strata = 0.9 + Math.sin(y * 6 + x * 2) * 0.06;
-const rr = 0.34, gg = 0.33, bb = 0.33;
-col.setRGB(
-(rr + snowMix * (0.95 - rr)) * strata,
-(gg + snowMix * (0.96 - gg)) * strata,
-(bb + snowMix * (0.99 - bb)) * strata
-);
+// soğuk mavi-gri kaya (alt) -> kar (üst); tabaka deseni
+const snow = Math.min(1, Math.max(0, (hN - 0.46) / 0.26));
+const strata = 0.9 + Math.sin(y * 5.5 + x * 2) * 0.07;
+let r = 0.40 * strata, g = 0.45 * strata, b = 0.55 * strata;
+r += (0.97 - r) * snow; g += (0.98 - g) * snow; b += (1.0 - b) * snow;
+col.setRGB(r, g, b);
 colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
 }
 geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -5785,8 +5784,9 @@ const villageMats = createVillageBiomeMaterials();
 const lakeMats = createFrozenLakeBiomeMaterials();
 const canyonMats = createCanyonBiomeMaterials();
 worldBiomes = [
-// === SADECE KANYON (izole geliştirme dosyası) ===
+// === SADECE KANYON (izole gelistirme dosyasi) ===
 { name: 'canyon', makeChunk: () => createSkyCanyonChunk(canyonMats),
+  // Buz Kanyonu: karlı köprü, mavi buz duvarlar, gün batımı ufku (sıcak), mavi tepe gök.
   bg: new THREE.Color(0x9bb9d4), fogColor: new THREE.Color(0xe7cea6), fogNear: 60, fogFar: 680, exposure: 1.15,
   sun: new THREE.Color(0xffd9a8), sunInt: 2.05, hemiSky: new THREE.Color(0xbcd6f0), hemiGround: new THREE.Color(0x5a6e84), hemiInt: 0.6, skyTop: new THREE.Color(0x2a5a92) }
 ];
