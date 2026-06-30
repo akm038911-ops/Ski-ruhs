@@ -5087,6 +5087,115 @@ flag.position.set(x + side * 0.5, 1.8, z); flag.rotation.y = side < 0 ? 0 : Math
 return g;
 }
 
+// ===== JEOTERMAL / KAPLICA VADİSİ BIOME =====
+function createGeothermalBiomeMaterials() {
+return {
+ground: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
+rock: new THREE.MeshStandardMaterial({ color: 0x2e2a2c, roughness: 0.98 }),
+snowCap: new THREE.MeshStandardMaterial({ color: 0xf2f7ff, roughness: 0.8 }),
+water: new THREE.MeshStandardMaterial({ color: 0x2fd6c8, emissive: 0x0e9c93, emissiveIntensity: 0.85, metalness: 0.2, roughness: 0.12, side: THREE.DoubleSide }),
+mineral: new THREE.MeshStandardMaterial({ color: 0xe7e0cf, roughness: 0.85 }),
+crack: new THREE.MeshStandardMaterial({ color: 0xff7a2a, emissive: 0xff5a1a, emissiveIntensity: 1.3, roughness: 0.6 }),
+steam: new THREE.PointsMaterial({ color: 0xffffff, size: 4.0, map: createSoftCloudTexture(), transparent: true, opacity: 0.4, depthWrite: false }),
+peak: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 })
+};
+}
+
+function createGeothermalChunk(materials) {
+const chunk = new THREE.Group();
+const dummy = new THREE.Object3D();
+
+// --- Zemin: kar + koyu mineral/çamur lekeleri (gürültüye göre) ---
+const g = new THREE.PlaneGeometry(170, 400, 28, 96);
+const p = g.attributes.position;
+const cols = new Float32Array(p.count * 3); const c = new THREE.Color();
+for (let i = 0; i < p.count; i++) {
+const x = p.getX(i), z = p.getY(i);
+const nz = (z + 200) / 25;
+let h = Math.sin(z * 0.05) * 0.05 + Math.sin(x * 0.2 + z * 0.03) * 0.04;
+if (Math.abs(x) > 24) h += (Math.abs(x) - 24) * 0.05;
+p.setZ(i, h);
+const mud = cFbm(x * 0.05, nz, 7.7);
+if (mud < 0.42 && Math.abs(x) > 6) { const m = 0.28 + mud * 0.22; c.setRGB(m, m * 0.86, m * 0.72); }
+else { const s = 0.86; c.setRGB(s, s + 0.02, Math.min(1, s + 0.05)); }
+cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+}
+g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); p.needsUpdate = true; g.computeVertexNormals();
+const ground = new THREE.Mesh(g, materials.ground); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; chunk.add(ground);
+
+const steamPts = [];
+
+// --- Kaplıca havuzları (turkuaz, parlayan) + mineral kenar + buhar ---
+for (let i = 0; i < 5; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (20 + Math.random() * 26);
+const z = (Math.random() - 0.5) * 380;
+const r = 2.5 + Math.random() * 4;
+const water = new THREE.Mesh(new THREE.CircleGeometry(r, 22), materials.water);
+water.rotation.x = -Math.PI / 2; water.position.set(x, 0.08, z); chunk.add(water);
+const rim = new THREE.Mesh(new THREE.TorusGeometry(r + 0.3, 0.5, 7, 22), materials.mineral);
+rim.rotation.x = Math.PI / 2; rim.position.set(x, 0.2, z); rim.castShadow = true; chunk.add(rim);
+const puffs = 8 + Math.floor(Math.random() * 8);
+for (let s = 0; s < puffs; s++) steamPts.push(x + (Math.random() - 0.5) * r * 1.4, 0.5 + Math.random() * 8, z + (Math.random() - 0.5) * r * 1.4);
+}
+
+// --- Gayzer (yüksek buhar sütunu) ---
+{
+const side = Math.random() > 0.5 ? 1 : -1;
+const x = side * (22 + Math.random() * 20);
+const z = (Math.random() - 0.5) * 360;
+const water = new THREE.Mesh(new THREE.CircleGeometry(1.6, 16), materials.water); water.rotation.x = -Math.PI / 2; water.position.set(x, 0.1, z); chunk.add(water);
+for (let s = 0; s < 26; s++) steamPts.push(x + (Math.random() - 0.5) * 2.2, 1 + s * 0.9, z + (Math.random() - 0.5) * 2.2);
+}
+
+// --- Fumarol: parlayan turuncu çatlaklar ---
+for (let i = 0; i < 8; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (16 + Math.random() * 30);
+const z = (Math.random() - 0.5) * 380;
+const crack = new THREE.Mesh(new THREE.BoxGeometry(0.3 + Math.random() * 0.4, 0.05, 2 + Math.random() * 4), materials.crack);
+crack.position.set(x, 0.12, z); crack.rotation.y = Math.random() * Math.PI; chunk.add(crack);
+}
+
+// --- Kar capli volkanik kayalar (instanced) ---
+const rockCount = 22;
+const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), materials.rock, rockCount);
+const caps = new THREE.InstancedMesh(new THREE.SphereGeometry(0.55, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), materials.snowCap, rockCount);
+for (let i = 0; i < rockCount; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (17 + Math.random() * 36);
+const z = (Math.random() - 0.5) * 388;
+const sc = 0.7 + Math.random() * 2.2;
+dummy.position.set(x, sc * 0.5, z); dummy.scale.set(sc * 1.2, sc, sc * 1.1); dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random()); dummy.updateMatrix(); rocks.setMatrixAt(i, dummy.matrix);
+dummy.position.set(x, sc * 1.0, z); dummy.scale.set(sc * 1.1, sc * 0.7, sc * 1.0); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix(); caps.setMatrixAt(i, dummy.matrix);
+}
+rocks.castShadow = true; rocks.frustumCulled = false; caps.frustumCulled = false; chunk.add(rocks, caps);
+
+// --- Mineral teraslar (basamaklı travertan) ---
+for (let t = 0; t < 3; t++) {
+const side = Math.random() > 0.5 ? 1 : -1;
+const x = side * (28 + Math.random() * 18);
+const z = (Math.random() - 0.5) * 340;
+const terr = new THREE.Group();
+for (let l = 0; l < 4; l++) {
+const disc = new THREE.Mesh(new THREE.CylinderGeometry(4 - l * 0.8, 4.4 - l * 0.8, 0.5, 16), materials.mineral);
+disc.position.y = l * 0.5; disc.castShadow = true; terr.add(disc);
+}
+terr.position.set(x, 0, z); chunk.add(terr);
+}
+
+// --- Buhar (points) ---
+if (steamPts.length) {
+const sg = new THREE.BufferGeometry();
+sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(steamPts), 3));
+const steam = new THREE.Points(sg, materials.steam); steam.frustumCulled = false; chunk.add(steam);
+}
+
+// --- Uzak karlı dağlar ---
+addBackdropMountains(chunk, materials.peak);
+return chunk;
+}
+
 // ===== DAĞ DEMİRYOLU BIOME (Subway/tren temalı) =====
 function createRailwayBiomeMaterials() {
 return {
@@ -5956,6 +6065,7 @@ const villageMats = createVillageBiomeMaterials();
 const lakeMats = createFrozenLakeBiomeMaterials();
 const canyonMats = createCanyonBiomeMaterials();
 const railwayMats = createRailwayBiomeMaterials();
+const geothermalMats = createGeothermalBiomeMaterials();
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
   bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520, exposure: 1.3,
@@ -5985,7 +6095,11 @@ worldBiomes = [
 { name: 'railway', makeChunk: () => createRailwayChunk(railwayMats),
   // Dağ demiryolu: berrak soğuk gün, karlı dolgu + raylar + tren.
   bg: new THREE.Color(0xa7c6dd), fogColor: new THREE.Color(0xcddce8), fogNear: 90, fogFar: 660, exposure: 1.12,
-  sun: new THREE.Color(0xfff2d6), sunInt: 1.95, hemiSky: new THREE.Color(0xc4dcf0), hemiGround: new THREE.Color(0x73797f), hemiInt: 0.6, skyTop: new THREE.Color(0x356fa8) }
+  sun: new THREE.Color(0xfff2d6), sunInt: 1.95, hemiSky: new THREE.Color(0xc4dcf0), hemiGround: new THREE.Color(0x73797f), hemiInt: 0.6, skyTop: new THREE.Color(0x356fa8) },
+{ name: 'geothermal', makeChunk: () => createGeothermalChunk(geothermalMats),
+  // Jeotermal/kaplıca vadisi: buharlı, ılık; turkuaz havuzlar ve fumarol parıltısı.
+  bg: new THREE.Color(0x9fb8c4), fogColor: new THREE.Color(0xd2dad6), fogNear: 55, fogFar: 600, exposure: 1.12,
+  sun: new THREE.Color(0xfff0d8), sunInt: 1.85, hemiSky: new THREE.Color(0xbcd0d4), hemiGround: new THREE.Color(0x4a4642), hemiInt: 0.62, skyTop: new THREE.Color(0x3a6a86) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
