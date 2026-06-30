@@ -5138,64 +5138,104 @@ peak: new THREE.MeshStandardMaterial({ vertexColors: true, bumpMap: rockTex, bum
 };
 }
 
-// Kanyon yükseklik alanı: ortada dar köprü (y~0), 15<|x|<38 dik gorge düşüşü,
-// |x|>38 dışa doğru yükselen kayalık duvarlar. Kaya gürültüsüyle düzensiz.
-function canyonNoise(x, z) {
-return Math.sin(x * 0.07) * 0.5 + Math.sin(z * 0.05 + x * 0.02) * 0.5
-+ Math.sin(x * 0.21 + z * 0.13) * 0.25 + Math.sin(z * 0.18 - x * 0.05) * 0.25;
+// Kanyon gürültüsü: döşenebilir (z'de periyodik) value-noise fbm.
+function cHash(ix, iz, seed) {
+const v = Math.sin(ix * 127.1 + iz * 311.7 + seed * 74.7) * 43758.5453;
+return v - Math.floor(v);
 }
+function cNoise(x, z, seed, period) {
+const x0 = Math.floor(x), z0 = Math.floor(z);
+const tx = x - x0, tz = z - z0;
+const sx = tx * tx * (3 - 2 * tx), sz = tz * tz * (3 - 2 * tz);
+const wrap = v => ((v % period) + period) % period;
+const a = cHash(x0, wrap(z0), seed), b = cHash(x0 + 1, wrap(z0), seed);
+const c = cHash(x0, wrap(z0 + 1), seed), d = cHash(x0 + 1, wrap(z0 + 1), seed);
+return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, sx), THREE.MathUtils.lerp(c, d, sx), sz);
+}
+function cFbm(x, z, seed) {
+let val = 0, amp = 0.55, freq = 1;
+for (let o = 0; o < 4; o++) { val += cNoise(x * freq, z * freq, seed + o * 5.1, 16 * freq) * amp; freq *= 2; amp *= 0.5; }
+return val;
+}
+// Kanyon yüksekliği: ortada düz köprü; yanlarda dik gorge + çok-oktavlı, keskin
+// sırtlı kayalık duvarlar (ridged noise). z'de döşenebilir.
 function getCanyonHeight(x, z) {
 const ax = Math.abs(x);
+const nz = (z + 200) / 25;
 const trackWave = Math.sin(z * 0.03) * 0.05;
 if (ax < 15) return trackWave + Math.sin(x * 0.4 + z * 0.05) * 0.05;
-if (ax < 38) {
-const t = (ax - 15) / 23;
-const drop = -Math.pow(t, 0.7) * 70;
-const rough = canyonNoise(x * 0.6, z) * Math.min(6, t * 10);
-return trackWave + drop + rough;
-}
-const o = ax - 38;
-const wall = Math.pow(o, 1.12) * 0.9;
-const crags = canyonNoise(x * 0.5, z) * Math.min(15, o * 0.5);
-return trackWave - 70 + wall + crags;
+let base;
+if (ax < 38) base = -Math.pow((ax - 15) / 23, 0.7) * 70;
+else base = -70 + Math.pow(ax - 38, 1.12) * 0.9;
+const amp = Math.min(1, (ax - 15) / 26);
+const broad = cFbm(x * 0.018, nz, 5.1);
+const ridge = 1 - Math.abs(cFbm(x * 0.045, nz, 12.3) * 2 - 1);
+const detail = cFbm(x * 0.11, nz, 21.7);
+const rock = (broad * 9 + ridge * 15 + detail * 3.5) * amp;
+return base + rock + trackWave;
 }
 
 function createSkyCanyonChunk(materials) {
 const chunk = new THREE.Group();
+const dummy = new THREE.Object3D();
 
-// --- Tek parça kayalık kanyon arazisi: köprü + dik gorge + yükselen duvarlar ---
-const geo = new THREE.PlaneGeometry(240, 400, 116, 104);
+// --- Tek parça kayalık kanyon arazisi (yüksek çözünürlük) ---
+const geo = new THREE.PlaneGeometry(240, 400, 132, 116);
 const pos = geo.attributes.position;
+for (let i = 0; i < pos.count; i++) {
+pos.setZ(i, getCanyonHeight(pos.getX(i), pos.getY(i)));
+}
+pos.needsUpdate = true;
+geo.computeVertexNormals();
+// Renk: eğim + yükseklik + derinlik. Kar düz ledge'lere birikir, dik yüz çıplak.
+const nor = geo.attributes.normal;
 const colors = new Float32Array(pos.count * 3);
 const col = new THREE.Color();
 for (let i = 0; i < pos.count; i++) {
-const x = pos.getX(i), z = pos.getY(i);
-const y = getCanyonHeight(x, z);
-pos.setZ(i, y);
+const x = pos.getX(i);
+const y = pos.getZ(i);                 // displaced yükseklik (plane henüz döndürülmedi)
 const ax = Math.abs(x);
 let r, g, b;
 if (ax < 14) {
-r = 0.74; g = 0.80; b = 0.9;                          // köprü karı (mavi-beyaz)
+r = 0.70; g = 0.76; b = 0.86;        // köprü karı (hafif mavi)
 } else {
-const band = 0.82 + Math.sin(y * 0.5 + canyonNoise(x * 0.3, z) * 1.2) * 0.13; // tabaka/strata
-const depth = Math.min(1, Math.max(0, (-y) / 70));      // dip karanlık
-const snow = Math.min(1, Math.max(0, (y - 28) / 22));   // tepe karı
-let rr = (0.31 - depth * 0.16) * band;
-let gg = (0.27 - depth * 0.15) * band;
-let bb = (0.23 - depth * 0.13) * band;
-rr = rr + (0.93 - rr) * snow;
-gg = gg + (0.96 - gg) * snow;
-bb = bb + (1.0 - bb) * snow;
+const slope = Math.min(1, Math.max(0, 1 - nor.getZ(i)));   // 0 düz, 1 dik
+const h01 = Math.min(1, Math.max(0, (y + 70) / 120));
+const depthDark = Math.min(1, Math.max(0, (-y) / 70));
+const band = 0.84 + Math.sin(y * 0.55 + cFbm(x * 0.05, (pos.getY(i) + 200) / 25, 3.3) * 4) * 0.11;
+let rr = (0.30 + h01 * 0.14 - depthDark * 0.14) * band;
+let gg = (0.27 + h01 * 0.13 - depthDark * 0.13) * band;
+let bb = (0.24 + h01 * 0.11 - depthDark * 0.12) * band;
+const shade = 1 - slope * 0.28;       // dik yüzeyler gölgeli (AO hissi)
+rr *= shade; gg *= shade; bb *= shade;
+const snow = Math.min(1, Math.max(0, (h01 - 0.5) / 0.28)) * Math.min(1, Math.max(0, 1 - slope * 2.0));
+rr += (0.95 - rr) * snow; gg += (0.97 - gg) * snow; bb += (1.0 - bb) * snow;
 r = rr; g = gg; b = bb;
 }
-col.setRGB(r, g, Math.min(1, b));
+col.setRGB(Math.max(0, r), Math.max(0, g), Math.min(1, Math.max(0, b)));
 colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
 }
 geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-pos.needsUpdate = true; geo.computeVertexNormals();
 const terrain = new THREE.Mesh(geo, materials.rock);
 terrain.rotation.x = -Math.PI / 2; terrain.receiveShadow = true; terrain.castShadow = true;
 chunk.add(terrain);
+
+// --- Moloz/scree kayaları (yamaçlarda) ---
+const scree = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), materials.darkRock, 44);
+for (let i = 0; i < 44; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (16 + Math.random() * 30);
+const z = (Math.random() - 0.5) * 396;
+const y = getCanyonHeight(x, -z);     // dünya z'si plane Y'sinin tersi (döndürme)
+const sc = 0.6 + Math.random() * 2.2;
+dummy.position.set(x, y + sc * 0.3, z);
+dummy.scale.set(sc * 1.3, sc * (0.7 + Math.random() * 0.5), sc * 1.2);
+dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+dummy.updateMatrix();
+scree.setMatrixAt(i, dummy.matrix);
+}
+scree.castShadow = true; scree.frustumCulled = false;
+chunk.add(scree);
 
 // --- Köprü korkulukları (yüksek köprü hissi) ---
 for (const side of [-1, 1]) {
