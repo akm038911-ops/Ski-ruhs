@@ -5128,7 +5128,7 @@ function createCanyonBiomeMaterials() {
 const rockTex = createProceduralRockTexture();
 return {
 rock: new THREE.MeshStandardMaterial({ vertexColors: true, bumpMap: rockTex, bumpScale: 0.6, roughness: 0.96, metalness: 0.03 }),
-darkRock: new THREE.MeshStandardMaterial({ color: 0x4a4036, bumpMap: rockTex, bumpScale: 0.5, roughness: 0.98 }),
+darkRock: new THREE.MeshStandardMaterial({ color: 0x7c8a98, bumpMap: rockTex, bumpScale: 0.5, roughness: 0.9 }),
 floor: new THREE.MeshStandardMaterial({ color: 0x2b3a2c, roughness: 1.0 }),
 snow: new THREE.MeshStandardMaterial({ color: 0xeef5ff, roughness: 0.8 }),
 plank: new THREE.MeshStandardMaterial({ color: 0x5a3c28, roughness: 0.9 }),
@@ -5157,13 +5157,29 @@ let val = 0, amp = 0.55, freq = 1;
 for (let o = 0; o < 4; o++) { val += cNoise(x * freq, z * freq, seed + o * 5.1, 16 * freq) * amp; freq *= 2; amp *= 0.5; }
 return val;
 }
-// Kanyon yüksekliği: ortada düz köprü; yanlarda dik gorge + çok-oktavlı, keskin
-// sırtlı kayalık duvarlar (ridged noise). z'de döşenebilir.
+// Temple Run mantığı: köprüde kırık şerit bölümleri. Belirli z aralıklarında
+// bir şerit (sol/orta/sağ) eksik olur -> oyuncu mecbur diğer şeride geçer.
+// Desen z'de 80 birim periyotlu (400/80=5) -> parçalar arasında döşenebilir.
+function canyonGap(x, z) {
+const lane = x < -4 ? -1 : (x > 4 ? 1 : 0);
+const local = (((z + 200) % 80) + 80) % 80;
+if (local < 22) {
+const seg = Math.floor(((((z + 200) % 400) + 400) % 400) / 80); // 0..4
+const broken = (seg % 3) - 1;   // -1,0,1 döngü
+if (lane === broken) return true;
+}
+return false;
+}
+// Kanyon yüksekliği: ortada karlı köprü (kırık bölümler uçuruma düşer);
+// yanlarda dik buz gorge + çok-oktavlı keskin sırtlı duvarlar. z'de döşenebilir.
 function getCanyonHeight(x, z) {
 const ax = Math.abs(x);
 const nz = (z + 200) / 25;
 const trackWave = Math.sin(z * 0.03) * 0.05;
-if (ax < 15) return trackWave + Math.sin(x * 0.4 + z * 0.05) * 0.05;
+if (ax < 15) {
+if (canyonGap(x, z)) return -60 + cFbm(x * 0.1, nz, 9.2) * 4;   // kırık şerit: boşluk
+return trackWave + Math.sin(x * 0.4 + z * 0.05) * 0.05;
+}
 let base;
 if (ax < 38) base = -Math.pow((ax - 15) / 23, 0.7) * 70;
 else base = -70 + Math.pow(ax - 38, 1.12) * 0.9;
@@ -5196,20 +5212,22 @@ const x = pos.getX(i);
 const y = pos.getZ(i);                 // displaced yükseklik (plane henüz döndürülmedi)
 const ax = Math.abs(x);
 let r, g, b;
-if (ax < 14) {
-r = 0.70; g = 0.76; b = 0.86;        // köprü karı (hafif mavi)
+if (ax < 14 && y > -5) {
+r = 0.84; g = 0.89; b = 0.97;        // köprü karı (beyaz-mavi)
 } else {
 const slope = Math.min(1, Math.max(0, 1 - nor.getZ(i)));   // 0 düz, 1 dik
 const h01 = Math.min(1, Math.max(0, (y + 70) / 120));
-const depthDark = Math.min(1, Math.max(0, (-y) / 70));
-const band = 0.84 + Math.sin(y * 0.55 + cFbm(x * 0.05, (pos.getY(i) + 200) / 25, 3.3) * 4) * 0.11;
-let rr = (0.30 + h01 * 0.14 - depthDark * 0.14) * band;
-let gg = (0.27 + h01 * 0.13 - depthDark * 0.13) * band;
-let bb = (0.24 + h01 * 0.11 - depthDark * 0.12) * band;
-const shade = 1 - slope * 0.28;       // dik yüzeyler gölgeli (AO hissi)
+const depth01 = Math.min(1, Math.max(0, (-y) / 70));
+// dikey buz olukları (striation): z boyunca değişir -> duvarda dikey çizgi
+const flute = 0.92 + Math.sin(pos.getY(i) * 0.5 + cFbm(x * 0.04, (pos.getY(i) + 200) / 25, 3.3) * 3) * 0.07;
+// buz mavisi taban: yüksekte açık, derinde koyu lacivert
+let rr = 0.50 + h01 * 0.30 - depth01 * 0.30;
+let gg = 0.60 + h01 * 0.30 - depth01 * 0.22;
+let bb = 0.72 + h01 * 0.26 - depth01 * 0.10;
+const shade = (1 - slope * 0.22) * flute;   // dik yüz + oluk gölgesi
 rr *= shade; gg *= shade; bb *= shade;
-const snow = Math.min(1, Math.max(0, (h01 - 0.5) / 0.28)) * Math.min(1, Math.max(0, 1 - slope * 2.0));
-rr += (0.95 - rr) * snow; gg += (0.97 - gg) * snow; bb += (1.0 - bb) * snow;
+const snow = Math.min(1, Math.max(0, (h01 - 0.5) / 0.3)) * Math.min(1, Math.max(0, 1 - slope * 1.8));
+rr += (0.96 - rr) * snow; gg += (0.97 - gg) * snow; bb += (1.0 - bb) * snow;
 r = rr; g = gg; b = bb;
 }
 col.setRGB(Math.max(0, r), Math.max(0, g), Math.min(1, Math.max(0, b)));
@@ -5789,9 +5807,9 @@ worldBiomes = [
   bg: new THREE.Color(0xa6cbe2), fogColor: new THREE.Color(0x9ec6de), fogNear: 150, fogFar: 750, exposure: 1.02,
   sun: new THREE.Color(0xeaf2ff), sunInt: 1.65, hemiSky: new THREE.Color(0xc4def0), hemiGround: new THREE.Color(0x80929f), hemiInt: 0.5, skyTop: new THREE.Color(0x3f7cb4) },
 { name: 'canyon', makeChunk: () => createSkyCanyonChunk(canyonMats),
-  // Bulut Kanyonu: dar yüksek köprü, derin uçurum, altta bulutlar -> yükseklik korkusu/aksiyon.
-  bg: new THREE.Color(0x7aa6c8), fogColor: new THREE.Color(0xbcd6e8), fogNear: 55, fogFar: 700, exposure: 1.2,
-  sun: new THREE.Color(0xffffff), sunInt: 2.2, hemiSky: new THREE.Color(0xbfe0ff), hemiGround: new THREE.Color(0x4a4236), hemiInt: 0.6, skyTop: new THREE.Color(0x265a93) }
+  // Buz Kanyonu: karlı köprü, mavi buz duvarlar, gün batımı ufku (sıcak), mavi tepe gök.
+  bg: new THREE.Color(0x9bb9d4), fogColor: new THREE.Color(0xe7cea6), fogNear: 60, fogFar: 680, exposure: 1.15,
+  sun: new THREE.Color(0xffd9a8), sunInt: 2.05, hemiSky: new THREE.Color(0xbcd6f0), hemiGround: new THREE.Color(0x5a6e84), hemiInt: 0.6, skyTop: new THREE.Color(0x2a5a92) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
