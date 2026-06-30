@@ -2819,7 +2819,7 @@ function buildParticles() {
 let geo = new THREE.BufferGeometry(); let pos = new Float32Array(4000 * 3);
 for(let i=0; i<12000; i++) pos[i] = (Math.random() - 0.5) * 200;
 geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-snowParticles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.25, transparent: true, opacity: 0.8 }));
+snowParticles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.32, map: createSoftCloudTexture(), transparent: true, opacity: 0.85, depthWrite: false, alphaTest: 0.02 }));
 worldGroup.add(snowParticles);
 geo = new THREE.BufferGeometry(); pos = new Float32Array(300 * 3);
 geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -6477,24 +6477,25 @@ if (!scene) return;
 if (scene.background && scene.background.isColor) {
 scene.background.copy(a.bg).lerp(b.bg, t);
 }
+// === GLOBAL GÖRSEL REFORM (tüm haritalar): netlik + kontrast ===
+// Pus geri itilir (uzak net), pozlama kısılır (beyaz patlama gider), güneş
+// güçlenir + ortam ışığı kısılır (form/keskinlik/kontrast artar).
 if (scene.fog) {
 scene.fog.color.copy(a.fogColor).lerp(b.fogColor, t);
-scene.fog.near = a.fogNear + (b.fogNear - a.fogNear) * t;
-scene.fog.far = a.fogFar + (b.fogFar - a.fogFar) * t;
+scene.fog.near = (a.fogNear + (b.fogNear - a.fogNear) * t) * 1.45;
+scene.fog.far = (a.fogFar + (b.fogFar - a.fogFar) * t) * 1.6;
 }
-// Biome'a özel tone-mapping pozlaması: karlı bölgelerde beyaz patlamayı önler.
 if (renderer && a.exposure !== undefined) {
-renderer.toneMappingExposure = a.exposure + ((b.exposure !== undefined ? b.exposure : a.exposure) - a.exposure) * t;
+renderer.toneMappingExposure = (a.exposure + ((b.exposure !== undefined ? b.exposure : a.exposure) - a.exposure) * t) * 0.8;
 }
-// Biome'a özel aydınlatma harmanı: güneş + ortam ışığı yumuşakça geçer.
 if (sunLight && a.sun) {
 sunLight.color.copy(a.sun).lerp(b.sun, t);
-sunLight.intensity = a.sunInt + (b.sunInt - a.sunInt) * t;
+sunLight.intensity = (a.sunInt + (b.sunInt - a.sunInt) * t) * 1.2;
 }
 if (hemiLight && a.hemiSky) {
 hemiLight.color.copy(a.hemiSky).lerp(b.hemiSky, t);
 hemiLight.groundColor.copy(a.hemiGround).lerp(b.hemiGround, t);
-hemiLight.intensity = a.hemiInt + (b.hemiInt - a.hemiInt) * t;
+hemiLight.intensity = (a.hemiInt + (b.hemiInt - a.hemiInt) * t) * 0.64;
 }
 // Gökyüzü kubbesi: ufuk rengi sisle aynı kalsın (dikişsiz ufuk), tepe rengi biome'a göre değişsin.
 if (skyDome && a.skyTop) {
