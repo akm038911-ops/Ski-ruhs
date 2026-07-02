@@ -6442,14 +6442,16 @@ m.rotation.x = -Math.PI / 2;
 m.frustumCulled = false;
 return m;
 };
-// yakın katman: sol / sağ / ön
-const left = mk(3.1, 1600, 340, 210); left.position.set(-330, -42, -150); left.rotation.z = Math.PI / 2; g.add(left);
-const right = mk(7.4, 1600, 340, 225); right.position.set(330, -42, -150); right.rotation.z = -Math.PI / 2; g.add(right);
-const front = mk(5.2, 1500, 320, 195); front.position.set(0, -42, -560); g.add(front);
+// Telefon (portre) görüş açısı dar: silsileler koridora yakın ve öne odaklı
+// yerleştirilir; tabanlar y=-80'de (zemin/bulut denizi altında) kalır,
+// zirveler karadan/buluttan yükselir.
+const left = mk(3.1, 1700, 300, 260); left.position.set(-175, -80, -150); left.rotation.z = Math.PI / 2; g.add(left);
+const right = mk(7.4, 1700, 300, 275); right.position.set(175, -80, -150); right.rotation.z = -Math.PI / 2; g.add(right);
+const front = mk(5.2, 1300, 300, 250); front.position.set(0, -80, -520); g.add(front);
 // uzak katman: daha yüksek, sis içinde silüet (uçsuz bucaksız his)
-const left2 = mk(11.8, 1900, 380, 265); left2.position.set(-540, -50, -260); left2.rotation.z = Math.PI / 2; g.add(left2);
-const right2 = mk(15.3, 1900, 380, 250); right2.position.set(540, -50, -260); right2.rotation.z = -Math.PI / 2; g.add(right2);
-const front2 = mk(9.6, 2000, 400, 270); front2.position.set(0, -50, -700); g.add(front2);
+const left2 = mk(11.8, 1700, 320, 320); left2.position.set(-320, -95, -260); left2.rotation.z = Math.PI / 2; g.add(left2);
+const right2 = mk(15.3, 1700, 320, 320); right2.position.set(320, -95, -260); right2.rotation.z = -Math.PI / 2; g.add(right2);
+const front2 = mk(9.6, 1600, 340, 330); front2.position.set(0, -95, -690); g.add(front2);
 return g;
 }
 
