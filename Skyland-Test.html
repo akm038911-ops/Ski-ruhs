@@ -901,8 +901,10 @@ scene.add(fillLight);
 // Gradyan gökyüzü kubbesi: düz renk yerine biome'a göre tepe/ufuk rengi harmanlanan gerçek gökyüzü.
 skyDome = createSkyDome();
 scene.add(skyDome);
-// (Foto gibi duran düz dağ panoraması kaldırıldı. Gerçek dağ için kullanıcının
-// dağ PNG'si / 3D modeli gerekir; sahte bir şey koymuyoruz.)
+// Epik sıradağ manzarası: heightfield silsileler (koni değil), iki katman;
+// sahne sisi uzaklık pusunu verir, sahne seviyesinde durduğu için kaymaz.
+mountainBackdrop = buildEpicMountainScape();
+scene.add(mountainBackdrop);
 worldGroup = new THREE.Group();
 worldGroup.rotation.x = -0.436;
 scene.add(worldGroup);
@@ -6384,45 +6386,71 @@ chunk.add(im);
 }
 }
 
-// Ufku saran, elle çizilmiş katmanlı karlı dağ panoraması (backdrop).
-// Uzak dağlar için 2B çizim, low-poly koniden çok daha gerçekçi durur.
-// (Gerçek foto için: bu texture yerine kullanıcının dağ PNG'si yüklenebilir.)
-function createMountainBackdropTexture() {
-const W = 2048, H = 640;
-const c = document.createElement('canvas'); c.width = W; c.height = H;
-const ctx = c.getContext('2d');
-ctx.clearRect(0, 0, W, H);
-const ridge = (x, L) => {
-let y = L.baseY;
-y -= Math.sin(x * 0.004 + L.seed) * L.amp * 0.5;
-y -= Math.sin(x * 0.013 + L.seed * 3) * L.amp * 0.3;
-y -= Math.sin(x * 0.031 + L.seed * 7) * L.amp * 0.2;
-y -= Math.abs(Math.sin(x * 0.089 + L.seed)) * L.amp * 0.14;
-return y;
-};
-// arka (hazy, açık) -> ön (koyu, karlı) katmanlar
-const layers = [
-{ base: '#b4c7d8', snow: '#d6e5f1', amp: 90, baseY: 300, seed: 1.0 },
-{ base: '#93aabf', snow: '#e0edf6', amp: 150, baseY: 380, seed: 2.3 },
-{ base: '#6f879e', snow: '#eef5fb', amp: 220, baseY: 480, seed: 3.7 }
-];
-const step = 6;
-for (const L of layers) {
-ctx.beginPath(); ctx.moveTo(0, H);
-for (let x = 0; x <= W; x += step) ctx.lineTo(x, ridge(x, L));
-ctx.lineTo(W, H); ctx.closePath();
-ctx.fillStyle = L.base; ctx.fill();
-// kar hattı (sırtın hemen altı beyaz)
-ctx.save(); ctx.clip();
-ctx.strokeStyle = L.snow; ctx.lineWidth = 22; ctx.globalAlpha = 0.85;
-ctx.beginPath();
-for (let x = 0; x <= W; x += step) { const y = ridge(x, L) + 6; if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
-ctx.stroke();
-ctx.restore(); ctx.globalAlpha = 1;
+// ===== EPİK SIRADAĞ SİSTEMİ =====
+// Tek tek koni değil: yükseklik-alanı (heightfield) ile üretilen kesintisiz
+// dağ SİLSİLESİ. Ridged fbm -> keskin sırtlar/zirveler; eğime göre kar/kaya;
+// sahne sisi uzaklık pusunu doğal verir. Gerçek oyunlardaki uzak dağ tekniği.
+function createEpicRangeGeometry(seed, length, depth, peakH) {
+const segX = 190, segY = 26;
+const geo = new THREE.PlaneGeometry(length, depth, segX, segY);
+const pos = geo.attributes.position;
+for (let i = 0; i < pos.count; i++) {
+const x = pos.getX(i), y = pos.getY(i);
+const u = x / length + 0.5;
+const v = Math.min(1, Math.max(0, y / depth + 0.5));
+// silsile omurgası ortada; öne/arkaya doğru etekler iner
+const cross = Math.pow(Math.sin(v * Math.PI), 1.2);
+// keskin zirveler: ridged fbm + silsile boyunca büyük dalga
+const n = cFbm(u * 7.5, v * 2.0, seed);
+const ridged = Math.pow(1 - Math.abs(n * 2 - 1), 1.7);
+const big = cFbm(u * 2.3 + 9, 0.5, seed + 4);
+const detail = (cFbm(u * 24, v * 7, seed + 8) - 0.5) * 0.14;
+const h = peakH * cross * (0.22 + 0.55 * ridged + 0.45 * big + detail);
+pos.setZ(i, Math.max(0, h));
 }
-const tex = new THREE.CanvasTexture(c);
-tex.wrapS = THREE.RepeatWrapping; tex.repeat.x = 2.4;
-return tex;
+pos.needsUpdate = true;
+geo.computeVertexNormals();
+const nor = geo.attributes.normal;
+const colors = new Float32Array(pos.count * 3);
+const col = new THREE.Color();
+for (let i = 0; i < pos.count; i++) {
+const h = pos.getZ(i);
+const hN = h / peakH;
+const slope = Math.min(1, Math.max(0, 1 - nor.getZ(i)));
+// soğuk mavi-gri kaya + hafif tabaka; kar yükseklere ve az eğimli yüzlere
+const strata = 0.92 + Math.sin(h * 0.35 + pos.getX(i) * 0.02) * 0.07;
+let r = 0.30 * strata, g = 0.33 * strata, b = 0.40 * strata;
+const snow = Math.min(1, Math.max(0, (hN - 0.24) / 0.16)) * Math.min(1, Math.max(0, 1 - slope * 1.35));
+r += (0.94 - r) * snow; g += (0.96 - g) * snow; b += (1.0 - b) * snow;
+const valleyShade = 1 - Math.max(0, 0.35 - hN) * 0.8;   // etekler hafif gölgede
+col.setRGB(r * valleyShade, g * valleyShade, b * valleyShade);
+colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
+}
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+return geo;
+}
+
+// Ufku saran epik sıradağ manzarası: iki yanda ve ileride, yakın + uzak katman.
+// Sahne seviyesinde durur (kaymaz) = gerçek uzak dağ davranışı; sis katmanları puslar.
+function buildEpicMountainScape() {
+const g = new THREE.Group();
+g.rotation.x = -0.436;   // dünya düzlemiyle hizalı
+const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0.02 });
+const mk = (seed, len, depth, h) => {
+const m = new THREE.Mesh(createEpicRangeGeometry(seed, len, depth, h), mat);
+m.rotation.x = -Math.PI / 2;
+m.frustumCulled = false;
+return m;
+};
+// yakın katman: sol / sağ / ön
+const left = mk(3.1, 1600, 340, 210); left.position.set(-330, -42, -150); left.rotation.z = Math.PI / 2; g.add(left);
+const right = mk(7.4, 1600, 340, 225); right.position.set(330, -42, -150); right.rotation.z = -Math.PI / 2; g.add(right);
+const front = mk(5.2, 1500, 320, 195); front.position.set(0, -42, -560); g.add(front);
+// uzak katman: daha yüksek, sis içinde silüet (uçsuz bucaksız his)
+const left2 = mk(11.8, 1900, 380, 265); left2.position.set(-540, -50, -260); left2.rotation.z = Math.PI / 2; g.add(left2);
+const right2 = mk(15.3, 1900, 380, 250); right2.position.set(540, -50, -260); right2.rotation.z = -Math.PI / 2; g.add(right2);
+const front2 = mk(9.6, 2000, 400, 270); front2.position.set(0, -50, -700); g.add(front2);
+return g;
 }
 
 function createSkyDome() {
