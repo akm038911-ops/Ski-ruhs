@@ -901,15 +901,8 @@ scene.add(fillLight);
 // Gradyan gökyüzü kubbesi: düz renk yerine biome'a göre tepe/ufuk rengi harmanlanan gerçek gökyüzü.
 skyDome = createSkyDome();
 scene.add(skyDome);
-// Ufku saran karlı dağ panoraması (backdrop) — kamerayla birlikte kalır, sabit uzaklıkta.
-mountainBackdrop = new THREE.Mesh(
-new THREE.CylinderGeometry(520, 520, 300, 96, 1, true),
-new THREE.MeshBasicMaterial({ map: createMountainBackdropTexture(), transparent: true, side: THREE.BackSide, depthWrite: false, fog: false })
-);
-mountainBackdrop.position.y = 40;
-mountainBackdrop.renderOrder = -0.5;
-mountainBackdrop.frustumCulled = false;
-scene.add(mountainBackdrop);
+// (Foto gibi duran düz dağ panoraması kaldırıldı. Gerçek dağ için kullanıcının
+// dağ PNG'si / 3D modeli gerekir; sahte bir şey koymuyoruz.)
 worldGroup = new THREE.Group();
 worldGroup.rotation.x = -0.436;
 scene.add(worldGroup);
