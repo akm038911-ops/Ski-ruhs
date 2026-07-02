@@ -563,7 +563,7 @@ buttons.forEach(btn => {
 let scene, camera, renderer, player;
 let obstacles = [], snowParticles, trailParticles;
 let worldGroup, ground1, ground2;
-let hemiLight, sunLight, fillLight, skyDome;
+let hemiLight, sunLight, fillLight, skyDome, mountainBackdrop;
 let clock;
 let runElapsed = 0;
 let mapPhase = 'valley';
@@ -901,6 +901,15 @@ scene.add(fillLight);
 // Gradyan gökyüzü kubbesi: düz renk yerine biome'a göre tepe/ufuk rengi harmanlanan gerçek gökyüzü.
 skyDome = createSkyDome();
 scene.add(skyDome);
+// Ufku saran karlı dağ panoraması (backdrop) — kamerayla birlikte kalır, sabit uzaklıkta.
+mountainBackdrop = new THREE.Mesh(
+new THREE.CylinderGeometry(520, 520, 300, 96, 1, true),
+new THREE.MeshBasicMaterial({ map: createMountainBackdropTexture(), transparent: true, side: THREE.BackSide, depthWrite: false, fog: false })
+);
+mountainBackdrop.position.y = 40;
+mountainBackdrop.renderOrder = -0.5;
+mountainBackdrop.frustumCulled = false;
+scene.add(mountainBackdrop);
 worldGroup = new THREE.Group();
 worldGroup.rotation.x = -0.436;
 scene.add(worldGroup);
@@ -5239,26 +5248,7 @@ for (let i = 0; i < 110; i++) { cp[i * 3] = (Math.random() - 0.5) * 380; cp[i * 
 cloudGeo.setAttribute('position', new THREE.BufferAttribute(cp, 3));
 const clouds = new THREE.Points(cloudGeo, materials.cloud); clouds.frustumCulled = false; chunk.add(clouds);
 
-// --- İki yanı saran keskin karlı dağlar (bulut denizinden yükselir) ---
-addBackdropMountains(chunk, materials.peak);
-{
-const d2 = new THREE.Object3D();
-const geos = [createSnowyPeakGeometry(1.7), createSnowyPeakGeometry(3.9)];
-for (let g = 0; g < geos.length; g++) {
-const im = new THREE.InstancedMesh(geos[g], materials.peak, 8);
-let n = 0;
-for (let s = 0; s < 2; s++) {
-const side = s === 0 ? -1 : 1;
-for (let i = 0; i < 4; i++) {
-const sX = 22 + Math.random() * 16, sY = 42 + Math.random() * 34;
-d2.position.set(side * (40 + Math.random() * 42), sY - 40, -200 + i * 130 + (Math.random() - 0.5) * 40);
-d2.scale.set(sX, sY, sX); d2.rotation.set(0, Math.random() * Math.PI, 0); d2.updateMatrix();
-im.setMatrixAt(n++, d2.matrix);
-}
-}
-im.frustumCulled = false; chunk.add(im);
-}
-}
+// --- İki yanı saran karlı dağlar: artık global mountainBackdrop panoramasıyla verilir ---
 
 // --- Çok aşağıda kıvrılan nehir ---
 {
@@ -6373,6 +6363,9 @@ return geo;
 
 // Bir chunk'a, iki yanı saran gerçekçi karlı dağ silsilesini (instanced) ekler.
 function addBackdropMountains(chunk, material) {
+// Uzak dağlar artık global "mountainBackdrop" panoramasıyla veriliyor;
+// low-poly koni dağlar devre dışı (koni yerine gerçekçi backdrop).
+return;
 const dummy = new THREE.Object3D();
 const geos = [createSnowyPeakGeometry(0.5), createSnowyPeakGeometry(2.1), createSnowyPeakGeometry(4.3)];
 const perGeoSide = 6;
@@ -6396,6 +6389,47 @@ im.setMatrixAt(n++, dummy.matrix);
 im.frustumCulled = false;
 chunk.add(im);
 }
+}
+
+// Ufku saran, elle çizilmiş katmanlı karlı dağ panoraması (backdrop).
+// Uzak dağlar için 2B çizim, low-poly koniden çok daha gerçekçi durur.
+// (Gerçek foto için: bu texture yerine kullanıcının dağ PNG'si yüklenebilir.)
+function createMountainBackdropTexture() {
+const W = 2048, H = 640;
+const c = document.createElement('canvas'); c.width = W; c.height = H;
+const ctx = c.getContext('2d');
+ctx.clearRect(0, 0, W, H);
+const ridge = (x, L) => {
+let y = L.baseY;
+y -= Math.sin(x * 0.004 + L.seed) * L.amp * 0.5;
+y -= Math.sin(x * 0.013 + L.seed * 3) * L.amp * 0.3;
+y -= Math.sin(x * 0.031 + L.seed * 7) * L.amp * 0.2;
+y -= Math.abs(Math.sin(x * 0.089 + L.seed)) * L.amp * 0.14;
+return y;
+};
+// arka (hazy, açık) -> ön (koyu, karlı) katmanlar
+const layers = [
+{ base: '#b4c7d8', snow: '#d6e5f1', amp: 90, baseY: 300, seed: 1.0 },
+{ base: '#93aabf', snow: '#e0edf6', amp: 150, baseY: 380, seed: 2.3 },
+{ base: '#6f879e', snow: '#eef5fb', amp: 220, baseY: 480, seed: 3.7 }
+];
+const step = 6;
+for (const L of layers) {
+ctx.beginPath(); ctx.moveTo(0, H);
+for (let x = 0; x <= W; x += step) ctx.lineTo(x, ridge(x, L));
+ctx.lineTo(W, H); ctx.closePath();
+ctx.fillStyle = L.base; ctx.fill();
+// kar hattı (sırtın hemen altı beyaz)
+ctx.save(); ctx.clip();
+ctx.strokeStyle = L.snow; ctx.lineWidth = 22; ctx.globalAlpha = 0.85;
+ctx.beginPath();
+for (let x = 0; x <= W; x += step) { const y = ridge(x, L) + 6; if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+ctx.stroke();
+ctx.restore(); ctx.globalAlpha = 1;
+}
+const tex = new THREE.CanvasTexture(c);
+tex.wrapS = THREE.RepeatWrapping; tex.repeat.x = 2.4;
+return tex;
 }
 
 function createSkyDome() {
