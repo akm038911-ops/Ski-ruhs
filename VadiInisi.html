@@ -5139,40 +5139,47 @@ cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
 g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); p.needsUpdate = true; g.computeVertexNormals();
 const ground = new THREE.Mesh(g, materials.ground); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; chunk.add(ground);
 
-// --- Slalom kapıları: iki yanda kırmızı/mavi bayrak çubukları ---
+// --- Slalom kapıları: rastgele aralık/kenar/jitter ile (tekrar hissini kırar) ---
 const gatePoleGeo = new THREE.CylinderGeometry(0.05, 0.06, 2.4, 6);
 const gateFlagGeo = new THREE.PlaneGeometry(0.95, 0.62);
-for (let i = 0; i < 12; i++) {
-const side = i % 2 === 0 ? -1 : 1;
-const red = (i % 4) < 2;
-const z = -186 + i * 33;
-const x = side * 16.2;
+let gz = -192 + Math.random() * 16;
+let gSide = Math.random() < 0.5 ? -1 : 1;
+let gRed = Math.random() < 0.5;
+while (gz < 190) {
+if (Math.random() < 0.7) gSide = -gSide;          // çoğunlukla zikzak, bazen aynı taraf
+gRed = !gRed;
+const x = gSide * (15.9 + Math.random() * 1.4);
 for (const off of [-0.55, 0.55]) {
-const pole = new THREE.Mesh(gatePoleGeo, red ? materials.poleRed : materials.poleBlue);
-pole.position.set(x + off, 1.2, z); pole.castShadow = true; chunk.add(pole);
+const pole = new THREE.Mesh(gatePoleGeo, gRed ? materials.poleRed : materials.poleBlue);
+pole.position.set(x + off, 1.2, gz); pole.castShadow = true; chunk.add(pole);
 }
-const flag = new THREE.Mesh(gateFlagGeo, red ? materials.flagRed : materials.flagBlue);
-flag.position.set(x, 1.85, z); chunk.add(flag);
+const flag = new THREE.Mesh(gateFlagGeo, gRed ? materials.flagRed : materials.flagBlue);
+flag.position.set(x, 1.85, gz); chunk.add(flag);
+gz += 24 + Math.random() * 22;
 }
 
-// --- Telesiyej hattı (sağ tarafta): direkler + kablo + sallanan koltuklar ---
+// --- Telesiyej hattı (taraf rastgele): direkler + kablo + sallanan koltuklar ---
+const liftX = (Math.random() < 0.5 ? -1 : 1) * (23 + Math.random() * 4);
+const towerPhase = Math.random() * 40;
 for (let i = 0; i < 5; i++) {
-const z = -170 + i * 85;
+const z = -180 + towerPhase + i * 85;
 const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 11, 8), materials.metal);
-post.position.set(24, 5.5, z); post.castShadow = true; chunk.add(post);
+post.position.set(liftX, 5.5, z); post.castShadow = true; chunk.add(post);
 const arm = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.3, 0.3), materials.metal);
-arm.position.set(24, 10.6, z); chunk.add(arm);
+arm.position.set(liftX, 10.6, z); chunk.add(arm);
 }
 const liftCable = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 396), materials.cable);
-liftCable.position.set(24, 10.2, 0); chunk.add(liftCable);
-for (let i = 0; i < 10; i++) {
+liftCable.position.set(liftX, 10.2, 0); chunk.add(liftCable);
+let chairZ = -190 + Math.random() * 20;
+while (chairZ < 190) {
 const chair = new THREE.Group();
 const hang = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), materials.cable); hang.position.y = -1.1; chair.add(hang);
 const seatB = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.16, 0.7), materials.seat); seatB.position.y = -2.2; chair.add(seatB);
 const back = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 0.14), materials.seat); back.position.set(0, -1.8, -0.32); chair.add(back);
-chair.position.set(24, 10.2, -180 + i * 40);
-chair.rotation.x = (Math.random() - 0.5) * 0.1;
+chair.position.set(liftX, 10.2, chairZ);
+chair.rotation.x = (Math.random() - 0.5) * 0.14;
 chunk.add(chair);
+chairZ += 30 + Math.random() * 22;
 }
 
 // --- Flama takı: pistin üstünden geçen şenlik bayrakları (yüksek, çarpmaz) ---
@@ -5229,20 +5236,21 @@ cat.rotation.y = (Math.random() - 0.5) * 1.2;
 chunk.add(cat);
 }
 
-// --- Güvenlik ağları (turuncu, kenarlarda) ---
+// --- Güvenlik ağları (turuncu, kenarlarda; sayı/konum rastgele) ---
 const netGeo = new THREE.PlaneGeometry(6.5, 1.2);
-for (let i = 0; i < 8; i++) {
-const side = i % 2 === 0 ? -1 : 1;
+const netCount = 6 + Math.floor(Math.random() * 4);
+for (let i = 0; i < netCount; i++) {
+const side = Math.random() < 0.5 ? -1 : 1;
 const net = new THREE.Mesh(netGeo, materials.net);
-net.position.set(side * 19.5, 0.7, -175 + i * 47 + (Math.random() - 0.5) * 14);
-net.rotation.y = side * -0.12;
+net.position.set(side * (19 + Math.random() * 2.5), 0.7, -190 + Math.random() * 380);
+net.rotation.y = side * -(0.05 + Math.random() * 0.2);
 chunk.add(net);
 }
 
-// --- Projektör direkleri ---
+// --- Projektör direkleri (konumlar rastgele) ---
 for (let i = 0; i < 4; i++) {
-const side = i % 2 === 0 ? -1 : 1;
-const z = -150 + i * 100;
+const side = Math.random() < 0.5 ? -1 : 1;
+const z = -170 + i * 100 + (Math.random() - 0.5) * 50;
 const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 7.5, 8), materials.metal);
 pole.position.set(side * 20.5, 3.75, z); pole.castShadow = true; chunk.add(pole);
 const head = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.5, 0.5), materials.dark);
@@ -5251,22 +5259,23 @@ const glow = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), materials.lamp
 glow.position.set(side * 19.8, 7.25, z); chunk.add(glow);
 }
 
-// --- Küçük atlama tümsekleri (kicker, kenarlarda görsel) ---
+// --- Küçük atlama tümsekleri (kicker, kenarlarda görsel; rastgele) ---
 const kickers = new THREE.InstancedMesh(new THREE.SphereGeometry(1.6, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), materials.roofSnow, 4);
 for (let i = 0; i < 4; i++) {
-const side = i % 2 === 0 ? -1 : 1;
-dummy.position.set(side * 18.5, 0, -120 + i * 80);
-dummy.scale.set(1.5, 0.7, 1.2); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
+const side = Math.random() < 0.5 ? -1 : 1;
+dummy.position.set(side * (17.5 + Math.random() * 3), 0, -185 + Math.random() * 370);
+dummy.scale.set(1.2 + Math.random() * 0.8, 0.55 + Math.random() * 0.35, 1.0 + Math.random() * 0.6);
+dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
 kickers.setMatrixAt(i, dummy.matrix);
 }
 kickers.frustumCulled = false; chunk.add(kickers);
 
-// --- Pist kenarı turuncu işaret çubukları (instanced) ---
+// --- Pist kenarı turuncu işaret çubukları (instanced, hafif dağınık) ---
 const edgePoles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.05, 1.6, 5), materials.net, 40);
 for (let i = 0; i < 40; i++) {
 const side = i % 2 === 0 ? -1 : 1;
-dummy.position.set(side * 15.7, 0.8, -195 + Math.floor(i / 2) * 20);
-dummy.scale.set(1, 1, 1); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
+dummy.position.set(side * (15.5 + Math.random() * 0.7), 0.8, -195 + Math.floor(i / 2) * 20 + (Math.random() - 0.5) * 8);
+dummy.scale.set(1, 0.85 + Math.random() * 0.35, 1); dummy.rotation.set(0, 0, (Math.random() - 0.5) * 0.12); dummy.updateMatrix();
 edgePoles.setMatrixAt(i, dummy.matrix);
 }
 edgePoles.frustumCulled = false; chunk.add(edgePoles);
@@ -6737,13 +6746,17 @@ return order[Math.floor(idx / SEGMENT_CHUNKS) % order.length];
 
 // Havuzdan boş parça al, yoksa bir kez üret. İlk turdan sonra hep yeniden kullanılır.
 function acquireChunk(biome) {
-let c = biome.pool.find(ch => !ch.userData.inUse);
+const free = biome.pool.filter(ch => !ch.userData.inUse);
+// Boş varyantlar arasından RASTGELE seç (hep aynı sırayla dönmesin).
+let c = free.length ? free[Math.floor(Math.random() * free.length)] : null;
 if (!c) {
 c = biome.makeChunk();
 c.userData.biomeName = biome.name;
 biome.pool.push(c);
 }
 c.userData.inUse = true;
+// Ayna çevirme: aynı varyant bile sağ-sol ters dizilimle gelir -> çeşitlilik 2x.
+c.scale.x = Math.random() < 0.5 ? -1 : 1;
 return c;
 }
 
