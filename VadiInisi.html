@@ -5092,6 +5092,188 @@ flag.position.set(x + side * 0.5, 1.8, z); flag.rotation.y = side < 0 ? 0 : Math
 return g;
 }
 
+// ===== KAYAK MERKEZİ BIOME (slalom, telesiyej, lodge, snowcat) =====
+function createResortBiomeMaterials() {
+return {
+ground: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }),
+poleRed: new THREE.MeshStandardMaterial({ color: 0xd23b3b, roughness: 0.55 }),
+poleBlue: new THREE.MeshStandardMaterial({ color: 0x2f6fd2, roughness: 0.55 }),
+flagRed: new THREE.MeshBasicMaterial({ color: 0xe14444, side: THREE.DoubleSide }),
+flagBlue: new THREE.MeshBasicMaterial({ color: 0x3b7ae0, side: THREE.DoubleSide }),
+metal: new THREE.MeshStandardMaterial({ color: 0x8a95a3, metalness: 0.75, roughness: 0.35 }),
+cable: new THREE.MeshStandardMaterial({ color: 0x232a33, metalness: 0.8, roughness: 0.3 }),
+seat: new THREE.MeshStandardMaterial({ color: 0x2c4a75, roughness: 0.6 }),
+wood: new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.9 }),
+glassWarm: new THREE.MeshStandardMaterial({ color: 0xffd98f, emissive: 0xffb347, emissiveIntensity: 0.75, roughness: 0.35 }),
+roofSnow: new THREE.MeshStandardMaterial({ color: 0xf2f7ff, roughness: 0.8 }),
+net: new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.85, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
+catRed: new THREE.MeshStandardMaterial({ color: 0xc22e2e, roughness: 0.5, metalness: 0.2 }),
+dark: new THREE.MeshStandardMaterial({ color: 0x1e2126, roughness: 0.7 }),
+lamp: new THREE.MeshBasicMaterial({ color: 0xfff1c4 }),
+pennant1: new THREE.MeshBasicMaterial({ color: 0xe14444, side: THREE.DoubleSide }),
+pennant2: new THREE.MeshBasicMaterial({ color: 0xf5c542, side: THREE.DoubleSide }),
+pennant3: new THREE.MeshBasicMaterial({ color: 0x3b7ae0, side: THREE.DoubleSide }),
+umbrella: new THREE.MeshStandardMaterial({ color: 0xd94f4f, roughness: 0.7, side: THREE.DoubleSide })
+};
+}
+
+function createResortChunk(materials) {
+const chunk = new THREE.Group();
+const dummy = new THREE.Object3D();
+
+// --- Bakımlı pist zemini: corduroy (tırmık) izleri + kenarlarda mavi ton ---
+const g = new THREE.PlaneGeometry(160, 400, 30, 96);
+const p = g.attributes.position;
+const cols = new Float32Array(p.count * 3); const c = new THREE.Color();
+for (let i = 0; i < p.count; i++) {
+const x = p.getX(i), z = p.getY(i); const nz = (z + 200) / 25;
+let h = Math.sin(z * 0.045) * 0.06 + Math.sin(x * 0.18 + z * 0.03) * 0.04;
+if (Math.abs(x) > 22) h += (Math.abs(x) - 22) * 0.06;
+p.setZ(i, h);
+const cord = Math.sin(x * 2.6) * 0.016;                 // corduroy şeritleri
+const spark = (cFbm(x * 0.5, nz * 2, 5.5) - 0.5) * 0.03;
+const edge = Math.min(1, Math.max(0, (Math.abs(x) - 18) / 40));
+c.setRGB(0.84 + cord + spark - edge * 0.06, 0.88 + cord + spark - edge * 0.04, Math.min(1, 0.95 + cord + spark));
+cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+}
+g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); p.needsUpdate = true; g.computeVertexNormals();
+const ground = new THREE.Mesh(g, materials.ground); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; chunk.add(ground);
+
+// --- Slalom kapıları: iki yanda kırmızı/mavi bayrak çubukları ---
+const gatePoleGeo = new THREE.CylinderGeometry(0.05, 0.06, 2.4, 6);
+const gateFlagGeo = new THREE.PlaneGeometry(0.95, 0.62);
+for (let i = 0; i < 12; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const red = (i % 4) < 2;
+const z = -186 + i * 33;
+const x = side * 16.2;
+for (const off of [-0.55, 0.55]) {
+const pole = new THREE.Mesh(gatePoleGeo, red ? materials.poleRed : materials.poleBlue);
+pole.position.set(x + off, 1.2, z); pole.castShadow = true; chunk.add(pole);
+}
+const flag = new THREE.Mesh(gateFlagGeo, red ? materials.flagRed : materials.flagBlue);
+flag.position.set(x, 1.85, z); chunk.add(flag);
+}
+
+// --- Telesiyej hattı (sağ tarafta): direkler + kablo + sallanan koltuklar ---
+for (let i = 0; i < 5; i++) {
+const z = -170 + i * 85;
+const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 11, 8), materials.metal);
+post.position.set(24, 5.5, z); post.castShadow = true; chunk.add(post);
+const arm = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.3, 0.3), materials.metal);
+arm.position.set(24, 10.6, z); chunk.add(arm);
+}
+const liftCable = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 396), materials.cable);
+liftCable.position.set(24, 10.2, 0); chunk.add(liftCable);
+for (let i = 0; i < 10; i++) {
+const chair = new THREE.Group();
+const hang = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), materials.cable); hang.position.y = -1.1; chair.add(hang);
+const seatB = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.16, 0.7), materials.seat); seatB.position.y = -2.2; chair.add(seatB);
+const back = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 0.14), materials.seat); back.position.set(0, -1.8, -0.32); chair.add(back);
+chair.position.set(24, 10.2, -180 + i * 40);
+chair.rotation.x = (Math.random() - 0.5) * 0.1;
+chunk.add(chair);
+}
+
+// --- Flama takı: pistin üstünden geçen şenlik bayrakları (yüksek, çarpmaz) ---
+{
+const tz = -80 + Math.random() * 160;
+for (const s of [-1, 1]) {
+const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 8.2, 8), materials.metal);
+pole.position.set(s * 16.5, 4.1, tz); pole.castShadow = true; chunk.add(pole);
+}
+const line = new THREE.Mesh(new THREE.BoxGeometry(33, 0.07, 0.07), materials.cable);
+line.position.set(0, 8.0, tz); chunk.add(line);
+const pennantGeo = new THREE.PlaneGeometry(0.55, 0.8);
+const pennantMats = [materials.pennant1, materials.pennant2, materials.pennant3];
+for (let i = 0; i < 11; i++) {
+const pn = new THREE.Mesh(pennantGeo, pennantMats[i % 3]);
+pn.position.set(-15 + i * 3, 7.55, tz);
+pn.rotation.x = 0.1;
+chunk.add(pn);
+}
+}
+
+// --- Dağ oteli / lodge (ara sıra): büyük camlı, teraslı ---
+if (Math.random() < 0.55) {
+const side = Math.random() > 0.5 ? 1 : -1;
+const lodge = new THREE.Group();
+const body = new THREE.Mesh(new THREE.BoxGeometry(12, 5, 8), materials.wood); body.position.y = 2.5; body.castShadow = true; lodge.add(body);
+const winBand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.7, 6.6), materials.glassWarm); winBand.position.set(side > 0 ? -6.05 : 6.05, 2.9, 0); lodge.add(winBand);
+const roof = new THREE.Mesh(new THREE.BoxGeometry(13.2, 0.5, 9.2), materials.wood); roof.position.y = 5.25; lodge.add(roof);
+const snowCap = new THREE.Mesh(new THREE.BoxGeometry(13.3, 0.25, 9.3), materials.roofSnow); snowCap.position.y = 5.6; lodge.add(snowCap);
+const deck = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 8), materials.wood); deck.position.set(side > 0 ? -9 : 9, 0.2, 0); lodge.add(deck);
+for (let u = 0; u < 2; u++) {
+const up = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 6), materials.metal); up.position.set((side > 0 ? -9 : 9) + (u ? 1.6 : -1.6), 1.6, u ? 2 : -2); lodge.add(up);
+const uc = new THREE.Mesh(new THREE.ConeGeometry(1.4, 0.8, 8), materials.umbrella); uc.position.set((side > 0 ? -9 : 9) + (u ? 1.6 : -1.6), 3.0, u ? 2 : -2); lodge.add(uc);
+}
+lodge.position.set(side * 32, 0, -60 + Math.random() * 120);
+lodge.rotation.y = side > 0 ? Math.PI : 0;
+chunk.add(lodge);
+}
+
+// --- Kar ezme aracı (snowcat, ara sıra park halinde) ---
+if (Math.random() < 0.5) {
+const side = Math.random() > 0.5 ? 1 : -1;
+const cat = new THREE.Group();
+const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.3, 3.8), materials.catRed); body.position.y = 1.5; body.castShadow = true; cat.add(body);
+const cab = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 1.6), materials.glassWarm); cab.position.set(0, 2.6, -0.6); cat.add(cab);
+for (const s of [-1, 1]) {
+const track = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.9, 4.6), materials.dark);
+track.position.set(s * 1.75, 0.45, 0); track.castShadow = true; cat.add(track);
+}
+const blade = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.1, 0.3), materials.metal);
+blade.position.set(0, 0.7, -2.6); blade.rotation.x = -0.25; cat.add(blade);
+cat.position.set(side * (21 + Math.random() * 6), 0, -140 + Math.random() * 280);
+cat.rotation.y = (Math.random() - 0.5) * 1.2;
+chunk.add(cat);
+}
+
+// --- Güvenlik ağları (turuncu, kenarlarda) ---
+const netGeo = new THREE.PlaneGeometry(6.5, 1.2);
+for (let i = 0; i < 8; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const net = new THREE.Mesh(netGeo, materials.net);
+net.position.set(side * 19.5, 0.7, -175 + i * 47 + (Math.random() - 0.5) * 14);
+net.rotation.y = side * -0.12;
+chunk.add(net);
+}
+
+// --- Projektör direkleri ---
+for (let i = 0; i < 4; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const z = -150 + i * 100;
+const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 7.5, 8), materials.metal);
+pole.position.set(side * 20.5, 3.75, z); pole.castShadow = true; chunk.add(pole);
+const head = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.5, 0.5), materials.dark);
+head.position.set(side * 20.1, 7.4, z); head.rotation.z = side * 0.35; chunk.add(head);
+const glow = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), materials.lamp);
+glow.position.set(side * 19.8, 7.25, z); chunk.add(glow);
+}
+
+// --- Küçük atlama tümsekleri (kicker, kenarlarda görsel) ---
+const kickers = new THREE.InstancedMesh(new THREE.SphereGeometry(1.6, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), materials.roofSnow, 4);
+for (let i = 0; i < 4; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+dummy.position.set(side * 18.5, 0, -120 + i * 80);
+dummy.scale.set(1.5, 0.7, 1.2); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
+kickers.setMatrixAt(i, dummy.matrix);
+}
+kickers.frustumCulled = false; chunk.add(kickers);
+
+// --- Pist kenarı turuncu işaret çubukları (instanced) ---
+const edgePoles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.05, 1.6, 5), materials.net, 40);
+for (let i = 0; i < 40; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+dummy.position.set(side * 15.7, 0.8, -195 + Math.floor(i / 2) * 20);
+dummy.scale.set(1, 1, 1); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
+edgePoles.setMatrixAt(i, dummy.matrix);
+}
+edgePoles.frustumCulled = false; chunk.add(edgePoles);
+
+return chunk;
+}
+
 // ===== GÖKYÜZÜ ADALARI BIOME (yüzen kara, bulut denizi) =====
 // Prosedürel çimen dokusu (canvas): gürültü + çim bıçakları -> bump için.
 function createProceduralGrassTexture() {
@@ -6497,6 +6679,7 @@ const railwayMats = createRailwayBiomeMaterials();
 const geothermalMats = createGeothermalBiomeMaterials();
 const ruinsMats = createRuinsBiomeMaterials();
 const skylandMats = createSkyIslandBiomeMaterials();
+const resortMats = createResortBiomeMaterials();
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
   bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520, exposure: 1.3,
@@ -6538,7 +6721,11 @@ worldBiomes = [
 { name: 'skyland', makeChunk: () => createSkyIslandChunk(skylandMats),
   // Gökyüzü adaları: parlak ferah gök, bulut denizi, yüzen kara + şelaleler.
   bg: new THREE.Color(0x86b6e0), fogColor: new THREE.Color(0xcfe2f2), fogNear: 70, fogFar: 720, exposure: 1.18,
-  sun: new THREE.Color(0xffffff), sunInt: 2.2, hemiSky: new THREE.Color(0xcfe6ff), hemiGround: new THREE.Color(0x8a9aa6), hemiInt: 0.7, skyTop: new THREE.Color(0x2f7fc4) }
+  sun: new THREE.Color(0xffffff), sunInt: 2.2, hemiSky: new THREE.Color(0xcfe6ff), hemiGround: new THREE.Color(0x8a9aa6), hemiInt: 0.7, skyTop: new THREE.Color(0x2f7fc4) },
+{ name: 'resort', makeChunk: () => createResortChunk(resortMats),
+  // Kayak merkezi: berrak şenlikli gün; slalom, telesiyej, lodge, snowcat.
+  bg: new THREE.Color(0xa9cbe4), fogColor: new THREE.Color(0xd0e1ee), fogNear: 85, fogFar: 640, exposure: 1.14,
+  sun: new THREE.Color(0xfff3d8), sunInt: 2.0, hemiSky: new THREE.Color(0xc8dff2), hemiGround: new THREE.Color(0x7e8894), hemiInt: 0.62, skyTop: new THREE.Color(0x2f6fb0) }
 ];
 worldBiomes.forEach(b => { b.pool = []; });
 }
