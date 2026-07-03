@@ -320,6 +320,19 @@ font-size: 4rem; font-weight: 900; color: #f59e0b; text-shadow: 0 5px 20px rgba(
 z-index: 50; display: none; text-transform: uppercase; font-style: italic; pointer-events: none;
 text-align: center; width: 100%; letter-spacing: 2px;
 }
+#zone-name {
+position: absolute; top: 24%; left: 50%; transform: translateX(-50%);
+font-size: 2.1rem; font-weight: 900; color: #ffffff; letter-spacing: 8px;
+text-shadow: 0 4px 18px rgba(0,0,0,0.55); z-index: 55; display: none;
+text-transform: uppercase; text-align: center; width: 100%; pointer-events: none;
+}
+#zone-name small { display: block; font-size: 0.85rem; letter-spacing: 4px; color: #dbeafe; font-weight: 700; margin-bottom: 6px; }
+@keyframes zoneReveal {
+0% { opacity: 0; transform: translateX(-50%) translateY(18px); }
+12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+80% { opacity: 1; }
+100% { opacity: 0; transform: translateX(-50%) translateY(-14px); }
+}
 @keyframes trickPop {
 0% { opacity: 0; transform: translate(-50%, 50px) scale(0.5) skewX(-15deg); }
 15% { opacity: 1; transform: translate(-50%, 0) scale(1.3) skewX(0deg); }
@@ -354,6 +367,7 @@ text-align: center; width: 100%; letter-spacing: 2px;
 </div>
 <div id="hud-effects"></div>
 <div id="trick-name">TRICK!</div>
+<div id="zone-name"></div>
 <div id="game-over-panel">
   <div class="game-over-shell">
     <img class="go-panel-img" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lQm5WQAAAABJRU5ErkJggg==" alt="Game Over">
@@ -4997,6 +5011,40 @@ let worldBiomes = null;
 let worldChunks = [];
 let worldChunkCounter = 0;
 let worldTravel = 0;
+let lastZoneSegment = 0;
+const mistCurtainPool = [];
+const ZONE_TITLES = { valley: 'VADİ', cave: 'BUZ MAĞARASI', cliff: 'UÇURUM', forest: 'ORMAN', village: 'ALP KÖYÜ', lake: 'DONMUŞ GÖL', canyon: 'KANYON', railway: 'DAĞ DEMİRYOLU', geothermal: 'KAPLICA VADİSİ', ruins: 'ANTİK HARABELER', skyland: 'GÖKYÜZÜ ADALARI' };
+
+// Bölge geçiş anonsu: sınırı geçince şık bir başlık belirir.
+function showZoneName(name) {
+const el = document.getElementById('zone-name');
+if (!el) return;
+el.innerHTML = '<small>YENİ BÖLGE</small>' + (ZONE_TITLES[name] || String(name).toUpperCase());
+el.style.display = 'block';
+el.style.animation = 'none'; void el.offsetWidth;
+el.style.animation = 'zoneReveal 3s ease-out forwards';
+}
+
+// Sis perdesi: bölge sınırındaki geometri dikişini gizleyen yumuşak bulut duvarı.
+// Havuzlanır; sınır chunk'ına eklenir, chunk bırakılınca geri döner.
+function acquireMistCurtain() {
+let c = mistCurtainPool.find(m => !m.userData.inUse);
+if (!c) {
+const geo = new THREE.BufferGeometry();
+const pts = new Float32Array(30 * 3);
+for (let i = 0; i < 30; i++) {
+pts[i * 3] = (Math.random() - 0.5) * 64;
+pts[i * 3 + 1] = Math.random() * 13;
+pts[i * 3 + 2] = (Math.random() - 0.5) * 26;
+}
+geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+c = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 30, map: createSoftCloudTexture(), transparent: true, opacity: 0.5, depthWrite: false }));
+c.frustumCulled = false;
+mistCurtainPool.push(c);
+}
+c.userData.inUse = true;
+return c;
+}
 
 function createCaveBiomeMaterials() {
 return {
@@ -6562,6 +6610,11 @@ return c;
 
 function releaseChunk(c) {
 if (!c) return;
+if (c.userData && c.userData.curtain) {
+c.remove(c.userData.curtain);
+c.userData.curtain.userData.inUse = false;
+c.userData.curtain = null;
+}
 c.userData.inUse = false;
 if (c.parent) c.parent.remove(c);
 }
@@ -6572,6 +6625,7 @@ for (const ch of worldChunks) releaseChunk(ch);
 worldChunks = [];
 worldTravel = 0;
 worldChunkCounter = 0;
+lastZoneSegment = 0;
 // Eski (legacy) zemin parçaları sahnedeyse temizle.
 if (ground1) { worldGroup.remove(ground1); ground1 = null; }
 if (ground2) { worldGroup.remove(ground2); ground2 = null; }
@@ -6650,6 +6704,12 @@ const coord = worldTravel / CHUNK_LEN;   // sürekli biome koordinatı
 const base = Math.floor(coord);
 const t = coord - base;
 const cur = getBiomeForIndex(base);
+// Bölge sınırı geçildi: anons + hafif rüzgâr (geçiş bir "an" olsun).
+const seg = Math.floor(coord / SEGMENT_CHUNKS);
+if (seg !== lastZoneSegment) {
+lastZoneSegment = seg;
+if (isPlaying && !isCrashed) { showZoneName(cur.name); playSound('air'); }
+}
 const nxt = getBiomeForIndex(base + 1);
 const smooth = t * t * (3 - 2 * t);
 applyAtmosphere(cur, nxt, smooth);
@@ -6675,6 +6735,13 @@ const biome = getBiomeForIndex(worldChunkCounter);
 const fresh = acquireChunk(biome);
 fresh.position.set(0, 0, minZ - CHUNK_LEN);
 fresh.userData.index = worldChunkCounter;
+// Yeni biome'un ilk parçası: sınır dikişine sis perdesi koy.
+if (worldChunkCounter % SEGMENT_CHUNKS === 0) {
+const curtain = acquireMistCurtain();
+curtain.position.set(0, 0, 199);
+fresh.add(curtain);
+fresh.userData.curtain = curtain;
+}
 worldGroup.add(fresh);
 worldChunks[maxIdx] = fresh;
 worldChunkCounter++;
