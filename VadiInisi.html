@@ -956,7 +956,8 @@ composer = new THREE.EffectComposer(renderer);
 composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(window.innerWidth, window.innerHeight);
 composer.addPass(new THREE.RenderPass(scene, camera));
-bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.42, 0.55, 0.88);
+// Eşik 0.975: kar bloom'a girmez, yalnız gerçek ışıklar (lamba/kristal/pencere) parlar.
+bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.28, 0.35, 0.975);
 composer.addPass(bloomPass);
 composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
 }
