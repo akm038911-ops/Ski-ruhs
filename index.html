@@ -1221,6 +1221,87 @@
       transform:scale(.94);
     }
 
+    .punch-btn.recoil{
+      animation:punchRecoil .22s ease;
+    }
+
+    @keyframes punchRecoil{
+      0%{transform:scale(1)}
+      35%{transform:scale(.86)}
+      100%{transform:scale(1)}
+    }
+
+    #fightScreen.shake{
+      animation:screenShake .26s ease;
+    }
+
+    @keyframes screenShake{
+      0%,100%{transform:translate(0,0) rotate(0)}
+      20%{transform:translate(-7px,3px) rotate(-.6deg)}
+      40%{transform:translate(6px,-4px) rotate(.5deg)}
+      60%{transform:translate(-5px,3px) rotate(-.4deg)}
+      80%{transform:translate(4px,-2px) rotate(.3deg)}
+    }
+
+    .fighter.lunge img{
+      animation:playerLunge .22s ease;
+    }
+
+    @keyframes playerLunge{
+      0%{transform:translateX(0) scale(1)}
+      45%{transform:translateX(16px) scale(1.06) rotate(3deg)}
+      100%{transform:translateX(0) scale(1)}
+    }
+
+    #impactFlash{
+      position:absolute;
+      inset:0;
+      background:radial-gradient(circle at 50% 44%, rgba(255,255,255,.95), rgba(255,60,60,.4) 42%, transparent 72%);
+      opacity:0;
+      pointer-events:none;
+      z-index:4;
+    }
+
+    #impactFlash.pop{
+      animation:impactFlashAnim .3s ease;
+    }
+
+    @keyframes impactFlashAnim{
+      0%{opacity:0}
+      18%{opacity:1}
+      100%{opacity:0}
+    }
+
+    #hitPop.ko-text{
+      font-size:44px;
+      color:#fff;
+      text-shadow:0 0 22px rgba(255,34,68,.8), 0 4px 0 rgba(0,0,0,.5);
+    }
+
+    #hitPop.ko-text.pop{
+      animation:hitPopKo .6s ease;
+    }
+
+    @keyframes hitPopKo{
+      0%{opacity:0; transform:translate(-50%,-50%) scale(.2) rotate(-10deg)}
+      30%{opacity:1; transform:translate(-50%,-50%) scale(1.35) rotate(5deg)}
+      60%{opacity:1; transform:translate(-50%,-50%) scale(1.05) rotate(-2deg)}
+      100%{opacity:0; transform:translate(-50%,-65%) scale(.95) rotate(0)}
+    }
+
+    #enemyProgress{
+      text-align:center;
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:.1em;
+      color:#9fb3cc;
+      margin-bottom:2px;
+    }
+
+    #fightArena.tap-hint{
+      cursor:pointer;
+    }
+
   </style>
 </head>
 <body>
@@ -1308,8 +1389,10 @@
         <button type="button" id="fightSkipBtn" class="fight-skip-btn">Atla</button>
         <div id="comboBadge">COMBO x0</div>
       </div>
+      <div id="enemyProgress">DÜŞMAN 1/1</div>
       <div id="fightQuote"></div>
       <div id="fightArena">
+        <div id="impactFlash"></div>
         <div class="fighter" id="playerFighter">
           <img id="playerFighterImg" alt="">
           <div class="fighter-name" id="playerFighterName"></div>
@@ -1877,6 +1960,7 @@
 
     const fightState = {
       active:false,
+      locked:false,
       act:null,
       enemyIndex:0,
       enemyHp:0,
@@ -1886,9 +1970,12 @@
 
     const fightEls = {
       screen: document.getElementById("fightScreen"),
+      arena: document.getElementById("fightArena"),
       title: document.getElementById("fightTitle"),
       combo: document.getElementById("comboBadge"),
       quote: document.getElementById("fightQuote"),
+      progress: document.getElementById("enemyProgress"),
+      playerBox: document.getElementById("playerFighter"),
       playerImg: document.getElementById("playerFighterImg"),
       playerName: document.getElementById("playerFighterName"),
       enemyImg: document.getElementById("enemyFighterImg"),
@@ -1896,6 +1983,7 @@
       enemyBox: document.getElementById("enemyFighter"),
       hpFill: document.getElementById("enemyHpFill"),
       hitPop: document.getElementById("hitPop"),
+      impactFlash: document.getElementById("impactFlash"),
       punchBtn: document.getElementById("punchBtn"),
       skipBtn: document.getElementById("fightSkipBtn")
     };
@@ -2147,6 +2235,7 @@
       fightEls.enemyBox.classList.remove("ko","hit");
       updateHpBar();
       fightEls.quote.textContent = enemy.taunt || "";
+      fightEls.progress.textContent = "DÜŞMAN " + (i+1) + "/" + fightState.act.enemies.length;
       beep(500,.06,"triangle",.02);
     }
 
@@ -2155,29 +2244,63 @@
       fightEls.hpFill.style.width = pct + "%";
     }
 
+    function screenShake(){
+      fightEls.screen.classList.remove("shake");
+      void fightEls.screen.offsetWidth;
+      fightEls.screen.classList.add("shake");
+    }
+
+    function impactFlash(){
+      fightEls.impactFlash.classList.remove("pop");
+      void fightEls.impactFlash.offsetWidth;
+      fightEls.impactFlash.classList.add("pop");
+    }
+
+    function lungePlayer(){
+      fightEls.playerBox.classList.remove("lunge");
+      void fightEls.playerBox.offsetWidth;
+      fightEls.playerBox.classList.add("lunge");
+    }
+
     function punch(){
-      if(!fightState.active) return;
+      if(!fightState.active || fightState.locked) return;
       fightState.combo++;
       fightEls.combo.textContent = "COMBO x" + fightState.combo;
       fightState.enemyHp--;
       updateHpBar();
+      lungePlayer();
+      screenShake();
+      impactFlash();
       fightEls.enemyBox.classList.remove("hit");
       void fightEls.enemyBox.offsetWidth;
       fightEls.enemyBox.classList.add("hit");
+      fightEls.hitPop.classList.remove("ko-text");
       fightEls.hitPop.textContent = HIT_WORDS[Math.floor(Math.random()*HIT_WORDS.length)];
       fightEls.hitPop.classList.remove("pop");
       void fightEls.hitPop.offsetWidth;
       fightEls.hitPop.classList.add("pop");
+      fightEls.punchBtn.classList.remove("recoil");
+      void fightEls.punchBtn.offsetWidth;
+      fightEls.punchBtn.classList.add("recoil");
       beep(180 + Math.random()*160, .06, "square", .035);
       if(fightState.enemyHp <= 0){
+        fightState.locked = true;
         fightEls.enemyBox.classList.add("ko");
         fightEls.quote.textContent = fightState.act.enemies[fightState.enemyIndex].name + " yerde!";
-        beep(120,.14,"sawtooth",.03);
-        setTimeout(nextEnemyOrFinish, 650);
+        fightEls.hitPop.classList.add("ko-text");
+        fightEls.hitPop.textContent = "K.O.!";
+        fightEls.hitPop.classList.remove("pop");
+        void fightEls.hitPop.offsetWidth;
+        fightEls.hitPop.classList.add("pop");
+        screenShake();
+        beep(120,.16,"sawtooth",.035);
+        setTimeout(()=>beep(90,.2,"sawtooth",.03),90);
+        setTimeout(()=>{ fightState.locked = false; nextEnemyOrFinish(); }, 700);
       }
     }
 
     function nextEnemyOrFinish(){
+      if(!fightState.active) return;
       fightState.enemyIndex++;
       const enemies = fightState.act.enemies;
       if(fightState.enemyIndex < enemies.length){
@@ -2189,6 +2312,7 @@
 
     function autoWinFight(){
       if(!fightState.active) return;
+      fightState.active = false;
       fightState.enemyHp = 0;
       updateHpBar();
       fightEls.enemyBox.classList.add("ko");
@@ -2209,7 +2333,8 @@
       ensureAudio();
       punch();
     });
-    fightEls.enemyBox.addEventListener("click", e=>{
+    fightEls.arena.classList.add("tap-hint");
+    fightEls.arena.addEventListener("click", e=>{
       e.stopPropagation();
       ensureAudio();
       punch();
