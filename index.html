@@ -992,17 +992,17 @@
     #phoneCallHud{
       position:absolute;
       z-index:75;
-      top:84px;
+      top:44px;
       left:50%;
       transform:translateX(-50%);
       display:none;
       align-items:center;
-      gap:10px;
-      padding:12px 18px;
-      border-radius:18px;
+      gap:8px;
+      padding:6px 14px;
+      border-radius:14px;
       background:rgba(4,8,18,.82);
       border:1px solid rgba(34,211,238,.35);
-      box-shadow:0 14px 30px rgba(0,0,0,.4);
+      box-shadow:0 10px 22px rgba(0,0,0,.4);
     }
 
     #phoneCallHud.show{ display:flex; }
@@ -1302,6 +1302,102 @@
       cursor:pointer;
     }
 
+    /* ================= TELEFON SAHNESI: CIZGI ROMAN PANELLERI ================= */
+    #game.act-phonecall::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      z-index:38;
+      pointer-events:none;
+      opacity:.16;
+      mix-blend-mode:screen;
+      background-image:radial-gradient(rgba(34,211,238,.9) 1px, transparent 1.3px);
+      background-size:7px 7px;
+    }
+
+    #phoneComic{
+      position:absolute;
+      z-index:40;
+      left:0;
+      right:0;
+      top:18%;
+      height:48%;
+      display:none;
+    }
+
+    #phoneComic.show{ display:block; }
+
+    .comic-panel{
+      position:absolute;
+      border-radius:10px;
+      border:4px solid #060a13;
+      background:
+        radial-gradient(rgba(255,255,255,.14) 1px, transparent 1.4px) 0 0/8px 8px,
+        linear-gradient(160deg,#132038,#070c18);
+      box-shadow:7px 7px 0 rgba(0,0,0,.55), 0 0 0 1px rgba(34,211,238,.25) inset;
+      overflow:hidden;
+      transition:transform .3s ease, box-shadow .3s ease, filter .3s ease;
+    }
+
+    .comic-frame{
+      position:absolute;
+      inset:0;
+    }
+
+    .comic-frame img{
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      padding:6%;
+    }
+
+    .comic-label{
+      position:absolute;
+      left:50%;
+      bottom:6px;
+      transform:translateX(-50%) rotate(-2deg);
+      padding:3px 10px;
+      background:var(--gold);
+      color:#171100;
+      font-size:11px;
+      font-weight:1000;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      border-radius:4px;
+      box-shadow:2px 2px 0 rgba(0,0,0,.45);
+      white-space:nowrap;
+    }
+
+    .comic-main{
+      left:6%;
+      top:6%;
+      width:62%;
+      height:82%;
+      z-index:1;
+      filter:grayscale(.35) brightness(.82);
+    }
+
+    .comic-main.speaking{
+      filter:none;
+      transform:scale(1.03);
+      box-shadow:7px 7px 0 rgba(0,0,0,.55), 0 0 0 3px rgba(34,211,238,.55) inset, 0 0 26px rgba(34,211,238,.35);
+    }
+
+    .comic-inset{
+      right:4%;
+      bottom:6%;
+      width:38%;
+      height:44%;
+      z-index:2;
+      transform:rotate(3deg);
+      border-color:#060a13;
+    }
+
+    .comic-inset .comic-label{
+      font-size:10px;
+      padding:2px 7px;
+    }
+
   </style>
 </head>
 <body>
@@ -1318,6 +1414,17 @@
 
     <div id="stageCue"></div>
     <div id="phoneCallHud"><span class="phone-icon">📞</span><span class="phone-name" id="phoneCallName">ÇAYCI VEKİL</span></div>
+
+    <div id="phoneComic">
+      <div class="comic-panel comic-inset" id="comicInset">
+        <div class="comic-frame"><img id="comicInsetImg" alt=""></div>
+        <div class="comic-label" id="comicInsetLabel"></div>
+      </div>
+      <div class="comic-panel comic-main" id="comicMain">
+        <div class="comic-frame"><img id="comicMainImg" alt=""></div>
+        <div class="comic-label" id="comicMainLabel"></div>
+      </div>
+    </div>
 
     <div id="table"></div>
 
@@ -1501,7 +1608,13 @@
       skipBtn: document.getElementById("skipBtn"),
       soundBtn: document.getElementById("soundBtn"),
       phoneHud: document.getElementById("phoneCallHud"),
-      emojiPop: document.getElementById("emojiPop")
+      emojiPop: document.getElementById("emojiPop"),
+      phoneComic: document.getElementById("phoneComic"),
+      comicMain: document.getElementById("comicMain"),
+      comicMainImg: document.getElementById("comicMainImg"),
+      comicMainLabel: document.getElementById("comicMainLabel"),
+      comicInsetImg: document.getElementById("comicInsetImg"),
+      comicInsetLabel: document.getElementById("comicInsetLabel")
     };
 
     const chars = {
@@ -1800,19 +1913,19 @@
     const linesPhoneCall = [
       {speaker:"ANLATICI", text:"İstanbul, gece yarısına yakın. Karanlık bir dairede pencere kenarında oturan bir tekir kedi sokağı izliyor.", cue:"İSTANBUL // GÜVENLİ EV // GECE YARISI"},
       {speaker:"ANLATICI", text:'Aniden telefon titreşerek çalmaya başlar. Ekranda bir isim yanıp söner: "ÇAYCI VEKİL".', cue:"☎ ARANIYOR: ÇAYCI VEKİL", event:"phoneOn"},
-      {speaker:"BOĞAÇ", text:"Miyav— pardon, alo. Buyur Vekil."},
-      {speaker:"ÇAYCI VEKİL", text:"Boğaç, hattı kontrol ettin mi, temiz mi?"},
-      {speaker:"BOĞAÇ", text:"Vekil abi ben kediyim, hat kontrolü senin işin. Ben sadece kulak kabartıyorum."},
-      {speaker:"ÇAYCI VEKİL", text:"Doğru... Neyse, durum raporu istiyorum. Başkan şu an ne yapıyor?"},
-      {speaker:"BOĞAÇ", text:"Anam uyudu, her şey yolunda. Battaniyenin altında, telefon elinden düşmüş."},
-      {speaker:"ÇAYCI VEKİL", text:"Güzel. Etrafta hareketli bir şey var mı?"},
-      {speaker:"BOĞAÇ", text:"Aslında... bir şey soracaktım sana.", cue:"Boğaç'ın sesi ciddileşir."},
-      {speaker:"ÇAYCI VEKİL", text:"Söyle."},
-      {speaker:"BOĞAÇ", text:"Bu aralar evin etrafında tanımadığım tipler dolaşıyor. Aynı adam üç gündür karşı kaldırımda duruyor, hiç kıpırdamıyor."},
-      {speaker:"ÇAYCI VEKİL", text:"Nasıl biri, tarif edebilir misin?", cue:"Vekil'in sesi endişelenir."},
-      {speaker:"BOĞAÇ", text:"Uzun paltolu, güneş gözlüklü... gece de gözlük takıyor, tuhaf. Kim olduğunu bilmiyorum ama tüylerim ürperiyor, bunda iyi bir şey yok."},
-      {speaker:"ÇAYCI VEKİL", text:"Anlaşıldı. Hemen geliyorum. Sen gözünü açık tut, Başkan'ı sakın yalnız bırakma.", event:"phoneOff"},
-      {speaker:"BOĞAÇ", text:"Zaten hiç bırakmıyorum. Ben buradayım, kimse ona dokunamaz."},
+      {speaker:"BOĞAÇ", char:"bogac", text:"Miyav— pardon, alo. Buyur Vekil."},
+      {speaker:"ÇAYCI VEKİL", char:"fatih", text:"Boğaç, hattı kontrol ettin mi, temiz mi?"},
+      {speaker:"BOĞAÇ", char:"bogac", text:"Vekil abi ben kediyim, hat kontrolü senin işin. Ben sadece kulak kabartıyorum."},
+      {speaker:"ÇAYCI VEKİL", char:"fatih", text:"Doğru... Neyse, durum raporu istiyorum. Başkan şu an ne yapıyor?"},
+      {speaker:"BOĞAÇ", char:"bogac", text:"Anam uyudu, her şey yolunda. Battaniyenin altında, telefon elinden düşmüş."},
+      {speaker:"ÇAYCI VEKİL", char:"fatih", text:"Güzel. Etrafta hareketli bir şey var mı?"},
+      {speaker:"BOĞAÇ", char:"bogac", text:"Aslında... bir şey soracaktım sana.", cue:"Boğaç'ın sesi ciddileşir."},
+      {speaker:"ÇAYCI VEKİL", char:"fatih", text:"Söyle."},
+      {speaker:"BOĞAÇ", char:"bogac", text:"Bu aralar evin etrafında tanımadığım tipler dolaşıyor. Aynı adam üç gündür karşı kaldırımda duruyor, hiç kıpırdamıyor."},
+      {speaker:"ÇAYCI VEKİL", char:"fatih", text:"Nasıl biri, tarif edebilir misin?", cue:"Vekil'in sesi endişelenir."},
+      {speaker:"BOĞAÇ", char:"bogac", text:"Uzun paltolu, güneş gözlüklü... gece de gözlük takıyor, tuhaf. Kim olduğunu bilmiyorum ama tüylerim ürperiyor, bunda iyi bir şey yok."},
+      {speaker:"ÇAYCI VEKİL", char:"fatih", text:"Anlaşıldı. Hemen geliyorum. Sen gözünü açık tut, Başkan'ı sakın yalnız bırakma.", event:"phoneOff"},
+      {speaker:"BOĞAÇ", char:"bogac", text:"Zaten hiç bırakmıyorum. Ben buradayım, kimse ona dokunamaz."},
       {speaker:"ANLATICI", text:"Hat kesilir. Boğaç yeniden pencereye döner. Karşı kaldırımdaki gölge hâlâ orada duruyor.", cue:"DOSYA GÜNCELLENDİ: TEHDİT SEVİYESİ YÜKSELDİ"}
     ];
 
@@ -1915,12 +2028,18 @@
     }
 
     const FATIH_IMG = makeCharacter("Fatih", "#e8c39e", "#22d3ee", "ÇAYCI VEKİL");
+    const BOGAC_IMG = makeCat("Boğaç", "#c99a63", "#ffd700", "AJAN-K9");
     const AGENT_IMGS = [makeAgent("AJAN-1"), makeAgent("AJAN-2"), makeAgent("AJAN-3")];
     const ILAYDA_FIGHTER_IMG = makeFighterSprite(photoSrc, "#ffd700", "BAŞKAN", "İlayda");
 
+    const PHONE_CHAR_ART = {
+      bogac: { img: BOGAC_IMG, label: "BOĞAÇ" },
+      fatih: { img: FATIH_IMG, label: "ÇAYCI VEKİL" }
+    };
+
     const actManifest = [
       { id:"meeting", type:"dialogue", stage:"lab", lines:linesMeeting },
-      { id:"phonecall", type:"dialogue", stage:"apartment", lines:linesPhoneCall },
+      { id:"phonecall", type:"dialogue", stage:"phonecall", lines:linesPhoneCall },
       { id:"kidnap", type:"dialogue", stage:"apartment", lines:linesKidnapIntro },
       { id:"fight1", type:"fight", stage:"fight",
         title:"FATİH & BOĞAÇ DÖVÜŞÜYOR",
@@ -1957,6 +2076,7 @@
     };
 
     const actState = { index:0 };
+    const phoneComicState = { lastMain:null };
 
     const fightState = {
       active:false,
@@ -2044,10 +2164,33 @@
     }
 
     function applyStage(stage){
-      els.game.classList.remove("act-alt","act-apartment","act-fight-bg","act-final-bg");
-      if(stage === "apartment") els.game.classList.add("act-alt","act-apartment");
-      else if(stage === "fight") els.game.classList.add("act-alt","act-fight-bg");
-      else if(stage === "final") els.game.classList.add("act-alt","act-final-bg");
+      els.game.classList.remove("act-alt","act-apartment","act-fight-bg","act-final-bg","act-phonecall");
+      els.phoneComic.classList.remove("show");
+      if(stage === "apartment"){
+        els.game.classList.add("act-alt","act-apartment");
+      }else if(stage === "phonecall"){
+        els.game.classList.add("act-alt","act-apartment","act-phonecall");
+        els.phoneComic.classList.add("show");
+        activatePhoneChar(null);
+      }else if(stage === "fight"){
+        els.game.classList.add("act-alt","act-fight-bg");
+      }else if(stage === "final"){
+        els.game.classList.add("act-alt","act-final-bg");
+      }
+    }
+
+    function activatePhoneChar(charKey){
+      const keys = Object.keys(PHONE_CHAR_ART);
+      const mainKey = (charKey && PHONE_CHAR_ART[charKey]) ? charKey : (phoneComicState.lastMain || keys[0]);
+      const insetKey = keys.find(k => k !== mainKey) || keys[0];
+      phoneComicState.lastMain = mainKey;
+      const main = PHONE_CHAR_ART[mainKey];
+      const inset = PHONE_CHAR_ART[insetKey];
+      els.comicMainImg.src = main.img;
+      els.comicMainLabel.textContent = main.label;
+      els.comicInsetImg.src = inset.img;
+      els.comicInsetLabel.textContent = inset.label;
+      els.comicMain.classList.toggle("speaking", !!charKey);
     }
 
     function runEvents(line){
@@ -2094,6 +2237,9 @@
       }
       els.speaker.textContent = line.speaker;
       activate(line.char);
+      if(actManifest[actState.index] && actManifest[actState.index].stage === "phonecall"){
+        activatePhoneChar(line.char);
+      }
       runEvents(line);
       typeText(line.text);
       beep(560,.035,"square",.014);
@@ -2374,6 +2520,19 @@
       ensureAudio();
       advance();
     });
+
+    // Test kısayolu: index.html#scene2 (veya #scene3, #scene4, #scene5) ile
+    // ilgili bölüme dogrudan atla, sahne 1'i baştan izlemeye gerek kalmasın.
+    (function jumpToSceneFromHash(){
+      const m = location.hash.match(/^#scene([1-5])$/);
+      if(!m) return;
+      const idx = parseInt(m[1], 10) - 1;
+      if(!actManifest[idx]) return;
+      state.started = true;
+      actState.index = idx;
+      els.intro.classList.add("hide");
+      beginAct(actManifest[idx]);
+    })();
   </script>
 </body>
 </html>
