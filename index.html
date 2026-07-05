@@ -1202,26 +1202,70 @@
       100%{opacity:0; transform:translate(-50%,-60%) scale(.9) rotate(0)}
     }
 
-    .punch-btn{
-      appearance:none;
-      border:none;
+    #skillBar{
+      display:flex;
+      align-items:flex-end;
+      justify-content:center;
+      gap:11px;
       align-self:center;
-      border-radius:999px;
-      padding:15px 42px;
-      font-size:16px;
-      font-weight:1000;
-      letter-spacing:.1em;
-      text-transform:uppercase;
-      color:#2a0006;
+    }
+
+    .skill-btn{
+      position:relative;
+      appearance:none;
+      border-radius:50%;
+      width:50px;
+      height:50px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:21px;
+      background:linear-gradient(180deg,#2a3350,#12172a);
+      border:2px solid rgba(255,255,255,.2);
+      box-shadow:0 8px 18px rgba(0,0,0,.4);
+      color:#fff;
+      overflow:hidden;
+      flex:0 0 auto;
+    }
+
+    .skill-btn.skill-basic{
+      width:66px;
+      height:66px;
+      font-size:27px;
       background:linear-gradient(180deg,#ff8a97,#ff2244);
-      box-shadow:0 14px 30px rgba(255,34,68,.35);
+      border-color:rgba(255,255,255,.35);
     }
 
-    .punch-btn:active{
-      transform:scale(.94);
+    .skill-btn.skill-ult{
+      width:62px;
+      height:62px;
+      font-size:23px;
+      background:linear-gradient(180deg,#3a2c05,#1c1502);
+      border-color:rgba(255,215,0,.45);
     }
 
-    .punch-btn.recoil{
+    .skill-btn.skill-ult.ready{
+      background:linear-gradient(180deg,#ffe985,#ffd700);
+      color:#171100;
+      box-shadow:0 0 0 3px rgba(255,215,0,.35), 0 0 26px rgba(255,215,0,.7), 0 8px 18px rgba(0,0,0,.4);
+      animation:ultPulse 1s ease-in-out infinite;
+    }
+
+    @keyframes ultPulse{
+      0%,100%{transform:scale(1)}
+      50%{transform:scale(1.08)}
+    }
+
+    .skill-btn:disabled{
+      opacity:.5;
+      filter:grayscale(.5);
+    }
+
+    .skill-btn:active:not(:disabled){
+      transform:scale(.92);
+    }
+
+    .skill-btn.recoil{
       animation:punchRecoil .22s ease;
     }
 
@@ -1229,6 +1273,31 @@
       0%{transform:scale(1)}
       35%{transform:scale(.86)}
       100%{transform:scale(1)}
+    }
+
+    .skill-cd-ring{
+      position:absolute;
+      inset:0;
+      border-radius:50%;
+      pointer-events:none;
+      background:conic-gradient(rgba(0,0,0,.75) var(--pct,0%), transparent var(--pct,0%));
+    }
+
+    .skill-ult .skill-cd-ring{
+      background:conic-gradient(rgba(255,215,0,.4) var(--pct,0%), transparent var(--pct,0%));
+    }
+
+    .skill-cd-num{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:15px;
+      font-weight:1000;
+      color:#fff;
+      pointer-events:none;
+      text-shadow:0 1px 3px rgba(0,0,0,.8);
     }
 
     #fightScreen.shake{
@@ -1511,7 +1580,26 @@
           <div class="fighter-name" id="enemyFighterName"></div>
         </div>
       </div>
-      <button type="button" class="punch-btn" id="punchBtn">VUR!</button>
+      <div id="skillBar">
+        <button type="button" class="skill-btn skill-ult" id="skillUlt" title="Ulti">
+          <span class="skill-icon" id="skillUltIcon">⚡</span>
+          <span class="skill-cd-ring" id="skillUltRing"></span>
+          <span class="skill-cd-num" id="skillUltNum"></span>
+        </button>
+        <button type="button" class="skill-btn" id="skillTwo" title="Beceri 2">
+          <span class="skill-icon" id="skillTwoIcon">🔥</span>
+          <span class="skill-cd-ring" id="skillTwoRing"></span>
+          <span class="skill-cd-num" id="skillTwoNum"></span>
+        </button>
+        <button type="button" class="skill-btn" id="skillOne" title="Beceri 1">
+          <span class="skill-icon" id="skillOneIcon">💥</span>
+          <span class="skill-cd-ring" id="skillOneRing"></span>
+          <span class="skill-cd-num" id="skillOneNum"></span>
+        </button>
+        <button type="button" class="skill-btn skill-basic" id="skillBasic" title="Temel Saldırı">
+          <span class="skill-icon">👊</span>
+        </button>
+      </div>
     </div>
 
     <div id="ending">
@@ -2045,6 +2133,11 @@
         title:"FATİH & BOĞAÇ DÖVÜŞÜYOR",
         playerName:"Fatih & Boğaç",
         playerImg: FATIH_IMG,
+        skills:{
+          skill1:{ icon:"🐾", name:"Pati Atağı", dmg:2, cd:3000 },
+          skill2:{ icon:"☕", name:"Sıcak Çay", dmg:2, cd:4500 },
+          ult:{ icon:"⚡", name:"İkili Darbe", dmg:99 }
+        },
         enemies:[
           {name:"Dr. Volkov", img:CHAR_IMAGES.volkov, hp:3, taunt:"Bunu pişman olacaksın!"},
           {name:"Dr. Reyes", img:CHAR_IMAGES.reyes, hp:3, taunt:"Ben bilim insanıyım, dövüşçü değilim— ah!"},
@@ -2057,6 +2150,11 @@
         title:"BAŞKAN SAVAŞIYOR",
         playerName:"Başkan (İlayda)",
         playerImg: ILAYDA_FIGHTER_IMG,
+        skills:{
+          skill1:{ icon:"👠", name:"Topuk Darbesi", dmg:2, cd:3000 },
+          skill2:{ icon:"👜", name:"Çanta Savurma", dmg:2, cd:4500 },
+          ult:{ icon:"👑", name:"Başkan Modu", dmg:99 }
+        },
         enemies:[
           {name:"Ajan-1", img:AGENT_IMGS[0], hp:3, taunt:"Teslim ol!"},
           {name:"Ajan-2", img:AGENT_IMGS[1], hp:3, taunt:"Kaçış yok!"},
@@ -2068,6 +2166,7 @@
 
     const state = {
       started:false,
+      transitioning:false,
       lines:[],
       index:0,
       typing:false,
@@ -2085,7 +2184,10 @@
       enemyIndex:0,
       enemyHp:0,
       enemyMaxHp:0,
-      combo:0
+      combo:0,
+      ultGauge:0,
+      cooldowns:{ skill1:0, skill2:0 },
+      cooldownTimer:null
     };
 
     const fightEls = {
@@ -2104,8 +2206,20 @@
       hpFill: document.getElementById("enemyHpFill"),
       hitPop: document.getElementById("hitPop"),
       impactFlash: document.getElementById("impactFlash"),
-      punchBtn: document.getElementById("punchBtn"),
-      skipBtn: document.getElementById("fightSkipBtn")
+      skipBtn: document.getElementById("fightSkipBtn"),
+      skillBasic: document.getElementById("skillBasic"),
+      skillOne: document.getElementById("skillOne"),
+      skillOneIcon: document.getElementById("skillOneIcon"),
+      skillOneRing: document.getElementById("skillOneRing"),
+      skillOneNum: document.getElementById("skillOneNum"),
+      skillTwo: document.getElementById("skillTwo"),
+      skillTwoIcon: document.getElementById("skillTwoIcon"),
+      skillTwoRing: document.getElementById("skillTwoRing"),
+      skillTwoNum: document.getElementById("skillTwoNum"),
+      skillUlt: document.getElementById("skillUlt"),
+      skillUltIcon: document.getElementById("skillUltIcon"),
+      skillUltRing: document.getElementById("skillUltRing"),
+      skillUltNum: document.getElementById("skillUltNum")
     };
 
     function clearStates(){
@@ -2246,7 +2360,7 @@
     }
 
     function advance(){
-      if(!state.started || fightState.active) return;
+      if(!state.started || fightState.active || state.transitioning) return;
       if(state.typing){
         finishTyping();
         return;
@@ -2265,18 +2379,20 @@
         state.lines = act.lines;
         state.index = 0;
         clearStates();
-        setTimeout(showLine, 350);
+        setTimeout(()=>{ state.transitioning = false; showLine(); }, 350);
       }else if(act.type === "fight"){
-        setTimeout(()=>beginFight(act), 350);
+        setTimeout(()=>{ state.transitioning = false; beginFight(act); }, 350);
       }
     }
 
     function goToNextAct(){
+      state.transitioning = true;
       actState.index++;
       const next = actManifest[actState.index];
       if(next){
         beginAct(next);
       }else{
+        state.transitioning = false;
         showFinalEnding();
       }
     }
@@ -2292,6 +2408,7 @@
 
     function startScene(){
       state.started = true;
+      state.transitioning = true;
       actState.index = 0;
       els.intro.classList.add("hide");
       ensureAudio();
@@ -2345,6 +2462,7 @@
       state.lines = [];
       state.started = false;
       state.typing = false;
+      state.transitioning = false;
       clearInterval(state.interval);
       projection(false);
       clearStates();
@@ -2354,21 +2472,34 @@
       els.phoneHud.classList.remove("show");
       fightEls.screen.classList.remove("show");
       fightState.active = false;
+      clearInterval(fightState.cooldownTimer);
     }
 
-    // ---- Dövüş motoru ----
+    // ---- Dövüş motoru (beceri butonlu) ----
     const HIT_WORDS = ["BAM!","POW!","TAK!","GÜM!","PAT!"];
+    const ULT_GAIN = { basic:8, skill:16 };
 
     function beginFight(act){
       fightState.active = true;
       fightState.act = act;
       fightState.enemyIndex = 0;
       fightState.combo = 0;
+      fightState.ultGauge = 0;
+      fightState.cooldowns = { skill1:0, skill2:0 };
       fightEls.title.textContent = act.title;
       fightEls.combo.textContent = "COMBO x0";
       fightEls.playerImg.src = act.playerImg;
       fightEls.playerName.textContent = act.playerName;
+      fightEls.skillOneIcon.textContent = act.skills.skill1.icon;
+      fightEls.skillOne.title = act.skills.skill1.name;
+      fightEls.skillTwoIcon.textContent = act.skills.skill2.icon;
+      fightEls.skillTwo.title = act.skills.skill2.name;
+      fightEls.skillUltIcon.textContent = act.skills.ult.icon;
+      fightEls.skillUlt.title = act.skills.ult.name;
       fightEls.screen.classList.add("show");
+      updateUltGauge();
+      clearInterval(fightState.cooldownTimer);
+      fightState.cooldownTimer = setInterval(tickCooldowns, 100);
       loadEnemy(0);
     }
 
@@ -2408,11 +2539,33 @@
       fightEls.playerBox.classList.add("lunge");
     }
 
-    function punch(){
-      if(!fightState.active || fightState.locked) return;
-      fightState.combo++;
-      fightEls.combo.textContent = "COMBO x" + fightState.combo;
-      fightState.enemyHp--;
+    function updateUltGauge(){
+      const pct = Math.min(100, fightState.ultGauge);
+      fightEls.skillUltRing.style.setProperty("--pct", pct + "%");
+      fightEls.skillUlt.classList.toggle("ready", pct >= 100);
+    }
+
+    function tickCooldowns(){
+      const now = Date.now();
+      [["skill1", fightEls.skillOne, fightEls.skillOneRing, fightEls.skillOneNum, fightState.act.skills.skill1.cd],
+       ["skill2", fightEls.skillTwo, fightEls.skillTwoRing, fightEls.skillTwoNum, fightState.act.skills.skill2.cd]]
+        .forEach(([key, btn, ring, num, cd])=>{
+          const remain = fightState.cooldowns[key] - now;
+          if(remain > 0){
+            const pct = Math.max(0, Math.min(100, (remain/cd)*100));
+            ring.style.setProperty("--pct", pct + "%");
+            num.textContent = Math.ceil(remain/1000);
+            btn.disabled = true;
+          }else{
+            ring.style.setProperty("--pct", "0%");
+            num.textContent = "";
+            btn.disabled = false;
+          }
+        });
+    }
+
+    function landHit(dmg, isUlt){
+      fightState.enemyHp -= dmg;
       updateHpBar();
       lungePlayer();
       screenShake();
@@ -2421,14 +2574,14 @@
       void fightEls.enemyBox.offsetWidth;
       fightEls.enemyBox.classList.add("hit");
       fightEls.hitPop.classList.remove("ko-text");
-      fightEls.hitPop.textContent = HIT_WORDS[Math.floor(Math.random()*HIT_WORDS.length)];
+      fightEls.hitPop.textContent = isUlt ? "ULTİ!" : HIT_WORDS[Math.floor(Math.random()*HIT_WORDS.length)];
       fightEls.hitPop.classList.remove("pop");
       void fightEls.hitPop.offsetWidth;
       fightEls.hitPop.classList.add("pop");
-      fightEls.punchBtn.classList.remove("recoil");
-      void fightEls.punchBtn.offsetWidth;
-      fightEls.punchBtn.classList.add("recoil");
-      beep(180 + Math.random()*160, .06, "square", .035);
+      fightEls.skillBasic.classList.remove("recoil");
+      void fightEls.skillBasic.offsetWidth;
+      fightEls.skillBasic.classList.add("recoil");
+      beep(isUlt ? 260 : (180 + Math.random()*160), isUlt ? .12 : .06, isUlt ? "sawtooth" : "square", .035);
       if(fightState.enemyHp <= 0){
         fightState.locked = true;
         fightEls.enemyBox.classList.add("ko");
@@ -2443,6 +2596,30 @@
         setTimeout(()=>beep(90,.2,"sawtooth",.03),90);
         setTimeout(()=>{ fightState.locked = false; nextEnemyOrFinish(); }, 700);
       }
+    }
+
+    function useSkill(skillKey){
+      if(!fightState.active || fightState.locked) return;
+      const skills = fightState.act.skills;
+      if(skillKey === "ult"){
+        if(fightState.ultGauge < 100) return;
+        fightState.ultGauge = 0;
+        updateUltGauge();
+        fightState.combo++;
+        fightEls.combo.textContent = "COMBO x" + fightState.combo;
+        landHit(skills.ult.dmg, true);
+        return;
+      }
+      if(skillKey !== "basic"){
+        if(Date.now() < fightState.cooldowns[skillKey]) return;
+        fightState.cooldowns[skillKey] = Date.now() + skills[skillKey].cd;
+      }
+      fightState.combo++;
+      fightEls.combo.textContent = "COMBO x" + fightState.combo;
+      const dmg = skillKey === "basic" ? 1 : skills[skillKey].dmg;
+      fightState.ultGauge = Math.min(100, fightState.ultGauge + (skillKey === "basic" ? ULT_GAIN.basic : ULT_GAIN.skill));
+      updateUltGauge();
+      landHit(dmg, false);
     }
 
     function nextEnemyOrFinish(){
@@ -2470,20 +2647,36 @@
 
     function finishFight(){
       fightState.active = false;
+      clearInterval(fightState.cooldownTimer);
       fightEls.screen.classList.remove("show");
       goToNextAct();
     }
 
-    fightEls.punchBtn.addEventListener("click", e=>{
+    fightEls.skillBasic.addEventListener("click", e=>{
       e.stopPropagation();
       ensureAudio();
-      punch();
+      useSkill("basic");
+    });
+    fightEls.skillOne.addEventListener("click", e=>{
+      e.stopPropagation();
+      ensureAudio();
+      useSkill("skill1");
+    });
+    fightEls.skillTwo.addEventListener("click", e=>{
+      e.stopPropagation();
+      ensureAudio();
+      useSkill("skill2");
+    });
+    fightEls.skillUlt.addEventListener("click", e=>{
+      e.stopPropagation();
+      ensureAudio();
+      useSkill("ult");
     });
     fightEls.arena.classList.add("tap-hint");
     fightEls.arena.addEventListener("click", e=>{
       e.stopPropagation();
       ensureAudio();
-      punch();
+      useSkill("basic");
     });
     fightEls.skipBtn.addEventListener("click", e=>{
       e.stopPropagation();
@@ -2529,6 +2722,7 @@
       const idx = parseInt(m[1], 10) - 1;
       if(!actManifest[idx]) return;
       state.started = true;
+      state.transitioning = true;
       actState.index = idx;
       els.intro.classList.add("hide");
       beginAct(actManifest[idx]);
