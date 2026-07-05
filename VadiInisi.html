@@ -6,6 +6,13 @@
 <title>Vadi İnişi - V11 Mekanik Şablon Lite</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/GammaCorrectionShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body {
@@ -565,6 +572,58 @@ let obstacles = [], snowParticles, trailParticles;
 let worldGroup, ground1, ground2;
 let hemiLight, sunLight, fillLight, skyDome, mountainBackdrop;
 let skyBirds = [];
+let composer = null, bloomPass = null;
+
+// ===== GERÇEK DOKULAR (CDN) =====
+// Robot modelinin geldiği aynı CDN'den (kanıtlı çalışıyor) gerçek dokular yüklenir.
+// Güvenli: doku yüklenemezse materyal mevcut görünümünde kalır (asla bozulmaz).
+const CDN_TEXTURE_BASE = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/textures/';
+function applyCdnTexture(mat, prop, file, repeatX, repeatY, srgb, onload) {
+if (!mat) return;
+new THREE.TextureLoader().load(CDN_TEXTURE_BASE + file, function(t) {
+t.wrapS = t.wrapT = THREE.RepeatWrapping;
+t.repeat.set(repeatX || 1, repeatY || 1);
+if (srgb) t.encoding = THREE.sRGBEncoding;
+mat[prop] = t;
+mat.needsUpdate = true;
+if (onload) onload(mat);
+}, undefined, function() { /* yüklenemezse mevcut görünüm korunur */ });
+}
+
+// Tüm biome materyallerine gerçek yüzey detayı: kar dalgacıkları (waternormals),
+// kaya kabartması (disturb), gerçek ahşap (hardwood2), çimen (grasslight).
+function upgradeMaterialsCDN(M) {
+const snowN = (mat, rx, ry, s) => { if (!mat) return; if (mat.normalScale) mat.normalScale.set(s, s); applyCdnTexture(mat, 'normalMap', 'waternormals.jpg', rx, ry); };
+const rockB = (mat, rx, ry, s) => { if (!mat) return; mat.bumpScale = s; applyCdnTexture(mat, 'bumpMap', 'disturb.jpg', rx, ry); };
+const woodT = (mat, rx, ry, tint) => { if (!mat) return; applyCdnTexture(mat, 'map', 'hardwood2_diffuse.jpg', rx, ry, true, m => { if (tint) m.color.setHex(tint); }); applyCdnTexture(mat, 'bumpMap', 'hardwood2_bump.jpg', rx, ry); };
+
+// Kar zeminleri: rüzgar yalamış kar dalgacıkları (sastrugi hissi)
+snowN(M.villageMats && M.villageMats.ground, 14, 34, 0.32);
+snowN(M.resortMats && M.resortMats.ground, 14, 34, 0.28);
+snowN(M.railwayMats && M.railwayMats.snow, 14, 34, 0.32);
+snowN(M.ruinsMats && M.ruinsMats.ground, 14, 34, 0.24);
+snowN(M.geothermalMats && M.geothermalMats.ground, 14, 34, 0.3);
+snowN(M.skylandMats && M.skylandMats.ridge, 8, 44, 0.3);
+// Donmuş göl: buz yüzeyine gerçek dalga-normali (cilalı buz)
+if (M.lakeMats && M.lakeMats.ice) { M.lakeMats.ice.normalScale && M.lakeMats.ice.normalScale.set(0.85, 0.85); applyCdnTexture(M.lakeMats.ice, 'normalMap', 'waternormals.jpg', 8, 16); }
+// Kaya yüzeyleri: türbülans kabartması
+rockB(M.canyonMats && M.canyonMats.rock, 6, 10, 0.65);
+rockB(M.canyonMats && M.canyonMats.darkRock, 4, 6, 0.55);
+rockB(M.canyonMats && M.canyonMats.peak, 5, 4, 0.5);
+rockB(M.cliffMats && M.cliffMats.terrain, 8, 12, 0.5);
+rockB(M.forestMats && M.forestMats.ground, 6, 14, 0.4);
+rockB(M.caveMats && M.caveMats.tunnel, 4, 8, 0.7);
+// Skyland yan adaları: gerçek çimen
+applyCdnTexture(M.skylandMats && M.skylandMats.islandTop, 'map', 'terrain/grasslight-big.jpg', 3, 3, true);
+// Ahşaplar: gerçek tahta dokusu (+ ton açma, doku koyulaştırdığı için)
+woodT(M.villageMats && M.villageMats.beam, 1, 2, 0xa8917a);
+woodT(M.villageMats && M.villageMats.fence, 1, 2, 0xa8917a);
+woodT(M.railwayMats && M.railwayMats.wood, 1, 2, 0xb59a7e);
+woodT(M.resortMats && M.resortMats.wood, 2, 2, 0xb59a7e);
+woodT(M.lakeMats && M.lakeMats.wood, 1, 2, 0xa8917a);
+woodT(M.lakeMats && M.lakeMats.hutWall, 2, 2, 0xb08a68);
+woodT(M.skylandMats && M.skylandMats.plank, 2, 1, 0xb59a7e);
+}
 let clock;
 let runElapsed = 0;
 let mapPhase = 'valley';
@@ -794,6 +853,8 @@ function initMaterials() {
 matTreeTrunk = new THREE.MeshStandardMaterial({ color: 0x2a1610, roughness: 1.0, metalness: 0.0 });
 matTreeLeaves = new THREE.MeshStandardMaterial({ color: 0x0a1f10, roughness: 0.9, metalness: 0.0 });
 matSnow = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.1 });
+matSnow.normalScale.set(0.3, 0.3);
+applyCdnTexture(matSnow, 'normalMap', 'waternormals.jpg', 16, 18);
 matCoin = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 1.0, roughness: 0.1, emissive: 0x663300 });
 matRampRed = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 matForestObstacleBark = new THREE.MeshStandardMaterial({ map: createEmbeddedTreeTexture(TREE_BARK_TEXTURE_DATA, true), color: 0x80654f, roughness: 0.98 });
@@ -864,6 +925,12 @@ sideSafetyNetTexture.needsUpdate = true;
 matRail = new THREE.MeshStandardMaterial({ color: 0x9ca3af, metalness: 0.85, roughness: 0.22, emissive: 0x0f172a, emissiveIntensity: 0.18 });
 matRailGlow = new THREE.MeshStandardMaterial({ color: 0x67e8f9, metalness: 0.45, roughness: 0.18, emissive: 0x22d3ee, emissiveIntensity: 0.85 });
 }
+// Ekrana çizim: composer varsa bloom'lu, yoksa normal render.
+function renderFrame() {
+if (composer) composer.render();
+else renderer.render(scene, camera);
+}
+
 function init3D() {
 clock = new THREE.Clock();
 scene = new THREE.Scene();
@@ -881,6 +948,19 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.3;
 document.body.appendChild(renderer.domElement);
 renderer.domElement.id = 'game-canvas';
+// ===== POST-PROCESSING: bloom (parlama) + gamma düzeltme =====
+// Modüller CDN'den yüklenemezse composer null kalır ve oyun normal render'a düşer.
+try {
+if (THREE.EffectComposer && THREE.RenderPass && THREE.ShaderPass && THREE.UnrealBloomPass && THREE.GammaCorrectionShader) {
+composer = new THREE.EffectComposer(renderer);
+composer.setPixelRatio(renderer.getPixelRatio());
+composer.setSize(window.innerWidth, window.innerHeight);
+composer.addPass(new THREE.RenderPass(scene, camera));
+bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.42, 0.55, 0.88);
+composer.addPass(bloomPass);
+composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
+}
+} catch (e) { composer = null; }
 initMaterials();
 hemiLight = new THREE.HemisphereLight(0xbfe0ff, 0x6b7a8f, 0.62);
 scene.add(hemiLight);
@@ -916,7 +996,7 @@ buildParticles();
 window.addEventListener('resize', onResize);
 
 
-renderer.render(scene, camera);
+renderFrame();
 }
 function createValleyGeometry() {
 const geo = new THREE.PlaneGeometry(350, 400, 50, 50);
@@ -2656,7 +2736,7 @@ camera.position.z += (13.5 - camera.position.z) * 0.16;
 camera.fov += (82 - camera.fov) * 0.08;
 camera.updateProjectionMatrix();
 camera.lookAt(playerX, playerY + 0.8, -42 - travel * 22);
-renderer.render(scene, camera);
+renderFrame();
 
 if (progress >= 1) switchToForestCourse();
 }
@@ -4946,6 +5026,7 @@ return;
 function onResize() {
 if(!camera || !renderer) return;
 renderer.setSize(window.innerWidth, window.innerHeight);
+if (composer) { composer.setSize(window.innerWidth, window.innerHeight); }
 camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
 }
 function startGame() {
@@ -6636,6 +6717,8 @@ function buildEpicMountainScape() {
 const g = new THREE.Group();
 g.rotation.x = -0.436;   // dünya düzlemiyle hizalı
 const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0.02 });
+mat.bumpScale = 0.45;
+applyCdnTexture(mat, 'bumpMap', 'disturb.jpg', 10, 4);
 const mk = (seed, len, depth, h) => {
 const m = new THREE.Mesh(createEpicRangeGeometry(seed, len, depth, h), mat);
 m.rotation.x = -Math.PI / 2;
@@ -6689,6 +6772,7 @@ const geothermalMats = createGeothermalBiomeMaterials();
 const ruinsMats = createRuinsBiomeMaterials();
 const skylandMats = createSkyIslandBiomeMaterials();
 const resortMats = createResortBiomeMaterials();
+upgradeMaterialsCDN({ caveMats, cliffMats, forestMats, villageMats, lakeMats, canyonMats, railwayMats, geothermalMats, ruinsMats, skylandMats, resortMats });
 worldBiomes = [
 { name: 'valley', makeChunk: () => createValleyChunk(),
   bg: new THREE.Color(0xa0c4df), fogColor: new THREE.Color(0xcfe4f2), fogNear: 70, fogFar: 520, exposure: 1.3,
@@ -6929,7 +7013,7 @@ updateCrashPieces();
 
 // Çarpınca sahne ve kamera olduğu yerde kalır.
 // World akmaz, kamera takip yapmaz, açı bozulmaz.
-renderer.render(scene, camera);
+renderFrame();
 return;
 }
 
@@ -7357,7 +7441,7 @@ updateSkyBirds(activeSpeed);
 updateCrashPieces();
 
 if (!isGrinding) { const m = document.getElementById('balance-meter'); if (m) m.style.display = 'none'; }
-renderer.render(scene, camera);
+renderFrame();
 }
 </script>
 </body>
