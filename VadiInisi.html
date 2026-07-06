@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Vadi İnişi - V11 Mekanik Şablon Lite</title>
+<title>Vadi İnişi - Buz Kanyonu 200m Kırık Yol</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
@@ -626,7 +626,7 @@ woodT(M.skylandMats && M.skylandMats.plank, 2, 1, 0xb59a7e);
 }
 let clock;
 let runElapsed = 0;
-let mapPhase = 'valley';
+let mapPhase = 'forest';
 let courseOwnedMaterials = [];
 let cliffSkyTarget = null;
 let forestSkyTarget = null;
@@ -655,6 +655,15 @@ let animationFrameId;
 const laneWidth = 12.0; let currentLane = 0, playerX = 0, playerY = 0, velocityY = 0;
 // Harita üretim şablonu: oyun mekanikleri durur, otomatik eski engel/coin üretimi kapalıdır.
 const AUTO_OBSTACLE_SPAWNING_ENABLED = false;
+const CAVE_OBSTACLE_SPAWNING_ENABLED = true;
+// GELİŞTİRME MODU: İlk haritaları bekletmeden oyunu direkt seçili biome'da başlatır. Şu an buz kanyonu test modu aktiftir.
+const START_IN_FOREST_DEV_MODE = false;
+const START_IN_FOURTH_DEV_MODE = true;
+const FOURTH_MAP_BIOME_NAME = 'canyon';
+const FOREST_OBSTACLE_SPAWNING_ENABLED = true;
+const VILLAGE_OBSTACLE_SPAWNING_ENABLED = false;
+const LAKE_OBSTACLE_SPAWNING_ENABLED = false;
+const CANYON_BROKEN_LANES_ENABLED = true;
 let isJumping = false;
 const gravity = -0.009;
 let currentTrick = 'NONE';
@@ -1207,6 +1216,204 @@ geo.computeVertexNormals();
 return geo;
 }
 
+
+function createCaveEntranceFacadeGeometry() {
+const nx = 34;
+const ny = 20;
+const width = 150;
+const height = 78;
+const verts = [];
+const colors = [];
+const color = new THREE.Color();
+const isHole = (x, y) => {
+const rx = 26.5;
+const ry = 22.5;
+const cy = 13.0;
+return y < 35 && ((x * x) / (rx * rx) + ((y - cy) * (y - cy)) / (ry * ry)) < 1.0;
+};
+for (let iy = 0; iy <= ny; iy++) {
+const y = (iy / ny) * height;
+for (let ix = 0; ix <= nx; ix++) {
+const x = -width * 0.5 + (ix / nx) * width;
+const rough = Math.sin(x * 0.17 + y * 0.21) * 2.4 + Math.sin(x * 0.43 - y * 0.16) * 1.2 + (Math.random() - 0.5) * 2.8;
+verts.push(x, y, rough);
+const h = Math.min(1, y / height);
+const shade = 0.23 + h * 0.26 + (Math.random() - 0.5) * 0.045;
+color.setRGB(shade, shade * 1.05, shade * 1.08);
+colors.push(color.r, color.g, color.b);
+}
+}
+const indices = [];
+for (let iy = 0; iy < ny; iy++) {
+for (let ix = 0; ix < nx; ix++) {
+const a = iy * (nx + 1) + ix;
+const b = a + 1;
+const c = a + (nx + 1);
+const d = c + 1;
+const x0 = -width * 0.5 + ((ix + 0.5) / nx) * width;
+const y0 = ((iy + 0.5) / ny) * height;
+if (isHole(x0, y0)) continue;
+indices.push(a, c, b, b, c, d);
+}
+}
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+geo.setIndex(indices);
+geo.computeVertexNormals();
+return geo;
+}
+
+function createUnifiedCaveEntranceMountain() {
+const group = new THREE.Group();
+const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.97, metalness: 0.02 });
+const darkRockMat = new THREE.MeshStandardMaterial({ color: 0x26313a, roughness: 1.0, metalness: 0.02 });
+const snowMat = new THREE.MeshStandardMaterial({ color: 0xe3f0f7, roughness: 0.88, metalness: 0.01 });
+const iceMat = new THREE.MeshPhysicalMaterial({ color: 0x91dcf0, metalness: 0.07, roughness: 0.24, clearcoat: 0.8, transparent: true, opacity: 0.86, emissive: 0x0b6f86, emissiveIntensity: 0.24 });
+
+const facade = new THREE.Mesh(createCaveEntranceFacadeGeometry(), rockMat);
+facade.position.set(0, -1.5, 205);
+facade.castShadow = true;
+facade.receiveShadow = true;
+facade.frustumCulled = false;
+group.add(facade);
+
+const dummy = new THREE.Object3D();
+const rockGeo = new THREE.DodecahedronGeometry(3.0, 0);
+const rocks = new THREE.InstancedMesh(rockGeo, darkRockMat, 156);
+let ri = 0;
+for (let i = 0; i < 62; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (24 + Math.random() * 45);
+const y = 2 + Math.random() * 39;
+const z = 198 + (Math.random() - 0.5) * 15;
+const s = 0.75 + Math.random() * 1.85;
+dummy.position.set(x, y, z);
+dummy.scale.set(s * (1.05 + Math.random() * 0.5), s * (1.0 + Math.random() * 0.65), s * (0.85 + Math.random() * 0.65));
+dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+dummy.updateMatrix();
+rocks.setMatrixAt(ri++, dummy.matrix);
+}
+for (let i = 0; i < 70; i++) {
+const x = -58 + Math.random() * 116;
+const archLift = 24 + Math.cos(Math.min(1, Math.abs(x) / 58) * Math.PI * 0.5) * 10;
+const y = archLift + Math.random() * 32;
+const z = 198 + (Math.random() - 0.5) * 18;
+const s = 0.8 + Math.random() * 2.05;
+dummy.position.set(x, y, z);
+dummy.scale.set(s * (1.05 + Math.random() * 0.45), s * (0.82 + Math.random() * 0.7), s * (0.88 + Math.random() * 0.55));
+dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+dummy.updateMatrix();
+rocks.setMatrixAt(ri++, dummy.matrix);
+}
+for (let i = 0; i < 24; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (36 + Math.random() * 40);
+const y = -2 + Math.random() * 18;
+const z = 187 + Math.random() * 28;
+const s = 1.0 + Math.random() * 2.0;
+dummy.position.set(x, y, z);
+dummy.scale.set(s * 1.35, s * 0.9, s * 1.15);
+dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
+dummy.updateMatrix();
+rocks.setMatrixAt(ri++, dummy.matrix);
+}
+rocks.count = ri;
+rocks.castShadow = true;
+rocks.receiveShadow = true;
+rocks.frustumCulled = false;
+group.add(rocks);
+
+const snowGeo = new THREE.DodecahedronGeometry(2.2, 0);
+const snows = new THREE.InstancedMesh(snowGeo, snowMat, 44);
+for (let i = 0; i < 44; i++) {
+const x = -66 + Math.random() * 132;
+const y = 42 + Math.random() * 29 + Math.max(0, Math.abs(x) - 26) * 0.11;
+const z = 202 + Math.random() * 7;
+const s = 0.65 + Math.random() * 1.25;
+dummy.position.set(x, y, z);
+dummy.scale.set(s * 1.65, s * 0.45, s * 1.05);
+dummy.rotation.set(Math.random() * 0.22, Math.random() * Math.PI, Math.random() * 0.16);
+dummy.updateMatrix();
+snows.setMatrixAt(i, dummy.matrix);
+}
+snows.castShadow = true;
+snows.frustumCulled = false;
+group.add(snows);
+
+// Girişin içinde görünen kısa doğal kaya boğazı; çadır gibi düz tavan yerine kırık kaya dokusu verir.
+const throatGeo = new THREE.DodecahedronGeometry(2.1, 0);
+const throat = new THREE.InstancedMesh(throatGeo, darkRockMat, 78);
+for (let i = 0; i < 78; i++) {
+const depth = 150 + Math.random() * 48;
+let x, y;
+if (i < 46) {
+const side = i % 2 === 0 ? -1 : 1;
+x = side * (22.5 + Math.random() * 4.8);
+y = 2.5 + Math.random() * 22;
+} else {
+x = -23 + Math.random() * 46;
+y = 22 + Math.random() * 11;
+}
+const s = 0.55 + Math.random() * 1.28;
+dummy.position.set(x, y, depth);
+dummy.scale.set(s * (0.9 + Math.random() * 0.5), s * (0.95 + Math.random() * 0.75), s * (0.9 + Math.random() * 0.55));
+dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+dummy.updateMatrix();
+throat.setMatrixAt(i, dummy.matrix);
+}
+throat.castShadow = true;
+throat.frustumCulled = false;
+group.add(throat);
+
+const shardGeo = new THREE.ConeGeometry(0.45, 3.2, 7);
+const shards = new THREE.InstancedMesh(shardGeo, iceMat, 22);
+for (let i = 0; i < 22; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (20 + Math.random() * 4.5);
+const y = 5 + Math.random() * 17;
+const z = 185 + Math.random() * 18;
+const s = 0.55 + Math.random() * 0.75;
+dummy.position.set(x, y, z);
+dummy.scale.set(s, s * (0.9 + Math.random() * 0.8), s);
+dummy.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, side * 0.45);
+dummy.updateMatrix();
+shards.setMatrixAt(i, dummy.matrix);
+}
+shards.frustumCulled = false;
+group.add(shards);
+
+group.userData.ownedMaterials = [rockMat, darkRockMat, snowMat, iceMat];
+group.frustumCulled = false;
+return group;
+}
+
+function setUnifiedCaveEntrance(chunk, enabled) {
+if (!chunk || chunk.userData.biomeName !== 'cave') return;
+if (enabled) {
+if (!chunk.userData.unifiedCaveEntranceMountain) {
+const mountain = createUnifiedCaveEntranceMountain();
+mountain.name = 'unified-cave-entrance-mountain';
+chunk.userData.unifiedCaveEntranceMountain = mountain;
+chunk.add(mountain);
+}
+chunk.userData.unifiedCaveEntranceMountain.visible = true;
+} else if (chunk.userData.unifiedCaveEntranceMountain) {
+chunk.userData.unifiedCaveEntranceMountain.visible = false;
+}
+chunk.traverse(obj => {
+if (obj.userData && obj.userData.hideAtCaveEntrance) obj.visible = !enabled;
+});
+}
+
+function configureUnifiedChunk(chunk, index) {
+if (!chunk) return;
+const biome = getBiomeForIndex(index);
+const prevBiome = getBiomeForIndex(Math.max(0, index - 1));
+const isCaveEntrance = biome && biome.name === 'cave' && (!prevBiome || prevBiome.name !== 'cave');
+if (chunk.userData.biomeName === 'cave') setUnifiedCaveEntrance(chunk, isCaveEntrance);
+}
+
 function createIceCaveChunk(materials) {
 const chunk = new THREE.Group();
 
@@ -1290,8 +1497,10 @@ chunk.add(crystals);
 const ribGeo = new THREE.TorusGeometry(27.45, 0.16, 7, 40, Math.PI);
 for (let i = 0; i < 10; i++) {
 const rib = new THREE.Mesh(ribGeo, materials.rib);
-rib.position.set(0, 0, -180 + i * 40);
+const ribZ = -180 + i * 40;
+rib.position.set(0, 0, ribZ);
 rib.castShadow = true;
+if (ribZ > 95) rib.userData.hideAtCaveEntrance = true;
 chunk.add(rib);
 }
 
@@ -1304,11 +1513,13 @@ const post = new THREE.Mesh(supportPostGeo, materials.support);
 post.position.set(side * 22.0, 8.25, z);
 post.rotation.z = side * -0.055;
 post.castShadow = true;
+if (z > 65) post.userData.hideAtCaveEntrance = true;
 chunk.add(post);
 }
 const beam = new THREE.Mesh(supportBeamGeo, materials.support);
 beam.position.set(0, 16.25, z);
 beam.castShadow = true;
+if (z > 65) beam.userData.hideAtCaveEntrance = true;
 chunk.add(beam);
 }
 
@@ -2632,7 +2843,7 @@ activatePreparedCourse('cave');
 mapPhase = 'cave';
 setCaveObstaclePool(true);
 clearObstaclesForCourseChange();
-if (AUTO_OBSTACLE_SPAWNING_ENABLED) {
+if (AUTO_OBSTACLE_SPAWNING_ENABLED || CAVE_OBSTACLE_SPAWNING_ENABLED) {
 spawnObstacleAt('mineCart', -1, -240);
 spawnObstacleAt('mineCart', 1, -430);
 }
@@ -2745,12 +2956,12 @@ if (progress >= 1) switchToForestCourse();
 function resetCourseToValley() {
 removeCoursePortal();
 runElapsed = 0;
-mapPhase = 'valley';
+mapPhase = START_IN_FOURTH_DEV_MODE ? FOURTH_MAP_BIOME_NAME : (START_IN_FOREST_DEV_MODE ? 'forest' : 'valley');
 ziplineRideTime = 0;
 if (ziplineHandle) ziplineHandle.visible = false;
 setCaveObstaclePool(false);
 initUnifiedWorld();
-if (scene) scene.background.setHex(0xa0c4df);
+if (scene && !START_IN_FOREST_DEV_MODE && !START_IN_FOURTH_DEV_MODE) scene.background.setHex(0xa0c4df);
 }
 
 // Atmosfer ve parça akışı artık updateUnifiedWorld içinde yönetiliyor.
@@ -2909,7 +3120,8 @@ snowParticles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff
 worldGroup.add(snowParticles);
 geo = new THREE.BufferGeometry(); pos = new Float32Array(300 * 3);
 geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-trailParticles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, transparent: true, opacity: 0.5 }));
+trailParticles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, transparent: true, opacity: 0.0 }));
+trailParticles.visible = false;
 worldGroup.add(trailParticles);
 
 }
@@ -3110,6 +3322,20 @@ rootOffsetX += 0.16 * dir;
 rootRotZ += 0.38 * dir;
 torsoRotZ += 0.30 * dir;
 boardRotZ -= 0.28 * dir;
+} else if (mode === 'fallGap') {
+// Kırık kanyon yoluna düştü: karakter boşluğa doğru aşağı aksın.
+const fallT = Math.min(1, f / 70);
+const fallEase = fallT * fallT;
+rootY = crashImpact.startY - fallEase * 8.8;
+rootOffsetX += Math.sin(f * 0.20) * 0.10;
+rootRotX += 1.15 * fallT;
+rootRotZ += 0.50 * dir * fallT;
+boardRotX += 1.25 * fallT;
+boardRotZ -= 0.80 * dir * fallT;
+torsoRotX += 1.05 * fallT;
+torsoRotZ += 0.48 * dir * fallT;
+modelRotX += 0.40 * fallT;
+modelScaleY = Math.max(0.5, modelScaleY - 0.07 * fallT);
 }
 
 playerX = cx;
@@ -4003,18 +4229,30 @@ sideChairlift: { kind: 'side', x: 3.10, z: 3.0, top: 4.6, passY: 0.0, clear: 'AI
 sideWarningSign: { kind: 'side', x: 3.00, z: 3.1, top: 5.6, passY: 0.0, clear: 'AIR CLEAR!', crash: 'WARNING SIGN CRASH' },
 sideSafetyNet: { kind: 'side', x: 3.00, z: 3.0, top: 5.0, passY: 0.0, clear: 'AIR CLEAR!', crash: 'SAFETY NET CRASH' },
 mineCart: { kind: 'jump', x: 3.05, z: 3.25, top: 2.70, passY: 2.18, clear: 'CART JUMP!', crash: 'MINE CART CRASH' },
-forestTree: { kind: 'side', x: 3.35, z: 3.35, top: 12.0, passY: 0.0, clear: 'TREE DODGE!', crash: 'TREE CRASH' }
+forestTree: { kind: 'side', x: 3.35, z: 3.35, top: 12.0, passY: 0.0, clear: 'TREE DODGE!', crash: 'TREE CRASH' },
+forestLogJump: { kind: 'jump', x: 3.35, z: 3.05, top: 2.25, passY: 1.86, clear: 'LOG JUMP!', crash: 'FALLEN TREE CRASH' },
+forestDuckBranch: { kind: 'duck', x: 3.35, z: 3.45, top: 6.15, passY: 0.0, clear: 'BRANCH CLEAR!', crash: 'LOW BRANCH CRASH' },
+villageFenceJump: { kind: 'jump', x: 3.75, z: 3.05, top: 2.3, passY: 1.86, clear: 'FENCE JUMP!', crash: 'VILLAGE FENCE CRASH' },
+villageLowBanner: { kind: 'duck', x: 3.65, z: 3.55, top: 6.15, passY: 0.0, clear: 'BANNER CLEAR!', crash: 'LOW BANNER CRASH' },
+villageBarrel: { kind: 'side', x: 5.85, z: 4.35, top: 9.2, rampClearTop: 5.35, passY: 0.0, clear: 'BARREL DODGE!', crash: 'BARREL CRASH' },
+villageSnowman: { kind: 'side', x: 5.95, z: 4.45, top: 9.5, rampClearTop: 5.7, passY: 0.0, clear: 'SNOWMAN DODGE!', crash: 'SNOWMAN CRASH' },
+lakeIceRamp: { kind: 'ramp', x: 3.35, z: 3.2, top: 3.2, passY: 0.0, clear: 'ICE RAMP!', crash: 'ICE RAMP' }
 };
 return specs[type] || { kind: 'other', x: 2.8, z: 2.8, top: 3.0, passY: 0, clear: 'CLEAR!', crash: 'CRASH' };
 }
 
 function isPlayerAboveObstacle(obs, spec) {
-const top = (obs && obs.clearTop !== undefined) ? obs.clearTop : (spec.top || obs.hitY || 0);
+const normalTop = (obs && obs.clearTop !== undefined) ? obs.clearTop : (spec.top || obs.hitY || 0);
 const margin = spec.kind === 'side' ? 0.14 : 0.08;
 
-// En önemli fix: oyuncu rampadan / yüksek zıplamadan engelin üstündeyse,
-// X-Z alanına girse bile temas sayılmaz. Yüksekteyken "temassız geçiş" kabul edilir.
-return playerY > top + margin;
+// Sağa-sola kaçış engelleri normal zıplamayla geçilmesin.
+// Ama oyuncu rampadan gerçekten yüksek uçtuysa mantıken üstünden geçebilsin.
+if (spec.kind === 'side' && spec.rampClearTop !== undefined) {
+const rampFlight = currentJumpRampBoost && isJumping;
+return rampFlight && playerY > spec.rampClearTop + margin;
+}
+
+return playerY > normalTop + margin;
 }
 
 function clearObstacleInAir(obs, label) {
@@ -4183,7 +4421,288 @@ group.add(leaf);
 return group;
 }
 
+
+function createForestJumpLog() {
+const group = new THREE.Group();
+const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.26, 8.0, 10), matForestObstacleBark);
+trunk.rotation.z = Math.PI / 2;
+trunk.position.y = 1.18;
+trunk.castShadow = true;
+group.add(trunk);
+
+for (const x of [-2.45, 2.45]) {
+const stub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, 1.7, 6), matForestObstacleBark);
+stub.position.set(x, 1.72, (x < 0 ? -0.42 : 0.46));
+stub.rotation.z = Math.PI / 3 * (x < 0 ? -1 : 1);
+stub.castShadow = true;
+group.add(stub);
+}
+
+const leafGeo = new THREE.PlaneGeometry(1.5, 2.2);
+for (let i = 0; i < 8; i++) {
+const leaf = new THREE.Mesh(leafGeo, matForestObstacleLeaf);
+const angle = i * 0.82;
+leaf.position.set(Math.cos(angle) * 1.4, 2.0 + (i % 3) * 0.28, Math.sin(angle) * 0.48);
+leaf.rotation.set(0.12, angle, (i % 2 ? 0.18 : -0.16));
+const scale = 0.7 + (i % 3) * 0.12;
+leaf.scale.setScalar(scale);
+group.add(leaf);
+}
+return group;
+}
+
+function createForestDuckBranch() {
+const group = new THREE.Group();
+const trunkL = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.68, 5.8, 8), matForestObstacleBark);
+trunkL.position.set(-2.6, 2.85, -0.2);
+trunkL.rotation.z = 0.12;
+trunkL.castShadow = true;
+group.add(trunkL);
+
+const trunkR = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, 5.1, 8), matForestObstacleBark);
+trunkR.position.set(2.55, 2.45, 0.15);
+trunkR.rotation.z = -0.16;
+trunkR.castShadow = true;
+group.add(trunkR);
+
+const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.54, 8.4, 8), matForestObstacleBark);
+branch.position.set(0, 4.9, 0);
+branch.rotation.z = Math.PI / 2;
+branch.rotation.y = 0.06;
+branch.castShadow = true;
+group.add(branch);
+
+const branch2 = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 3.6, 6), matForestObstacleBark);
+branch2.position.set(-0.8, 5.6, -0.3);
+branch2.rotation.z = Math.PI / 2 + 0.46;
+branch2.rotation.y = -0.3;
+branch2.castShadow = true;
+group.add(branch2);
+
+const leafGeo = new THREE.PlaneGeometry(1.9, 2.8);
+for (let i = 0; i < 14; i++) {
+const leaf = new THREE.Mesh(leafGeo, matForestObstacleLeaf);
+const angle = i * 0.54;
+leaf.position.set(Math.cos(angle) * 2.0, 5.55 + Math.sin(angle * 1.7) * 0.35, Math.sin(angle) * 1.2);
+leaf.rotation.set((i % 3 - 1) * 0.15, angle, (i % 2 ? 0.22 : -0.18));
+leaf.scale.setScalar(0.7 + (i % 4) * 0.1);
+ group.add(leaf);
+}
+
+return group;
+}
+
+function createVillageFenceJump() {
+const group = new THREE.Group();
+const woodMat = matForestObstacleBark;
+const postGeo = new THREE.BoxGeometry(0.34, 2.45, 0.34);
+for (const x of [-2.05, 0, 2.05]) {
+const post = new THREE.Mesh(postGeo, woodMat);
+post.position.set(x, 1.18, 0);
+post.castShadow = true;
+group.add(post);
+}
+for (const y of [1.05, 1.72]) {
+const rail = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.28, 0.32), woodMat);
+rail.position.set(0, y, 0);
+rail.castShadow = true;
+group.add(rail);
+}
+const snowCap = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.18, 0.45), matSnow);
+snowCap.position.set(0, 2.02, 0);
+snowCap.castShadow = true;
+group.add(snowCap);
+return group;
+}
+
+function createVillageLowBanner() {
+const group = new THREE.Group();
+const poleGeo = new THREE.CylinderGeometry(0.12, 0.18, 6.2, 7);
+for (const x of [-2.85, 2.85]) {
+const pole = new THREE.Mesh(poleGeo, matForestObstacleBark);
+pole.position.set(x, 3.1, 0);
+pole.castShadow = true;
+group.add(pole);
+}
+const beam = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.22, 0.22), matForestObstacleBark);
+beam.position.set(0, 5.35, 0);
+beam.castShadow = true;
+group.add(beam);
+const rope = new THREE.Mesh(new THREE.BoxGeometry(5.7, 0.055, 0.055), matRail);
+rope.position.set(0, 4.62, 0.05);
+group.add(rope);
+const flagGeo = new THREE.PlaneGeometry(0.72, 0.9);
+const flagMats = [new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide }), new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide }), new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide })];
+for (let i = 0; i < 7; i++) {
+const flag = new THREE.Mesh(flagGeo, flagMats[i % flagMats.length]);
+flag.position.set(-2.55 + i * 0.85, 4.18 + Math.sin(i * 0.9) * 0.08, 0.07);
+flag.rotation.z = (i % 2 ? 0.08 : -0.08);
+group.add(flag);
+}
+return group;
+}
+
+function createVillageBarrelObstacle() {
+const group = new THREE.Group();
+
+// Mecburi sağ-sol engeli: düz duvar değil, üst üste dizilmiş büyük fıçılar.
+// Normal zıplamayla aşılmaz; rampadan yeterince yüksek uçarsan üstünden geçilebilir.
+const barrelMat = matForestObstacleBark;
+const iceMat = new THREE.MeshStandardMaterial({ color: 0xbbefff, roughness: 0.22, metalness: 0.08, transparent: true, opacity: 0.78 });
+const shadowMat = new THREE.MeshStandardMaterial({ color: 0x2a211d, roughness: 0.92, metalness: 0.03 });
+
+function addBarrel(x, y, z, scale, rotSeed) {
+const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.88, 2.45, 14), barrelMat);
+barrel.position.set(x, y, z);
+barrel.rotation.z = Math.PI / 2 + (rotSeed || 0) * 0.04;
+barrel.rotation.y = (rotSeed || 0) * 0.37;
+barrel.scale.set(scale, scale, scale);
+barrel.castShadow = true;
+barrel.receiveShadow = true;
+group.add(barrel);
+
+const ringGeo = new THREE.TorusGeometry(0.84 * scale, 0.045 * scale, 8, 18);
+const bandA = new THREE.Mesh(ringGeo, matRail);
+bandA.position.set(x - 0.62 * scale, y, z);
+bandA.rotation.y = Math.PI / 2;
+group.add(bandA);
+
+const bandB = new THREE.Mesh(ringGeo, matRail);
+bandB.position.set(x + 0.62 * scale, y, z);
+bandB.rotation.y = Math.PI / 2;
+group.add(bandB);
+}
+
+// Alt sıra geniş: şeridin tamamını kapatır.
+const bottom = [-3.25, -1.95, -0.65, 0.65, 1.95, 3.25];
+for (let i = 0; i < bottom.length; i++) addBarrel(bottom[i], 1.05, 0.52 + (i % 2) * 0.18, 1.12, i);
+
+// Orta sıra üst üste bindirilmiş fıçılar.
+const middle = [-2.55, -1.25, 0.0, 1.25, 2.55];
+for (let i = 0; i < middle.length; i++) addBarrel(middle[i], 3.15, -0.12 + (i % 2) * 0.2, 1.05, i + 7);
+
+// Üst sıra: piramit gibi kapanış, yükseklik algısı verir.
+const top = [-1.45, 0.0, 1.45];
+for (let i = 0; i < top.length; i++) addBarrel(top[i], 5.08, 0.18 + (i % 2) * 0.12, 0.98, i + 14);
+
+// En üstte buz tutmuş kar kapağı, göl temasına uysun.
+const iceCap = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.42, 2.55), iceMat);
+iceCap.position.set(0, 6.45, 0.24);
+iceCap.rotation.z = -0.035;
+iceCap.castShadow = true;
+group.add(iceCap);
+
+// Arkada hafif koyu gölge/dolgu, fıçıların tek tek okunmasını bozmaz ama hacim verir.
+const backPlate = new THREE.Mesh(new THREE.BoxGeometry(7.8, 5.2, 0.28), shadowMat);
+backPlate.position.set(0, 3.25, -1.05);
+backPlate.castShadow = true;
+backPlate.receiveShadow = true;
+group.add(backPlate);
+backPlate.renderOrder = -1;
+
+return group;
+}
+
+function createVillageSnowmanObstacle() {
+const group = new THREE.Group();
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x1f2933, roughness: 0.7 });
+const noseMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.7 });
+
+// Mecburi sağ-sol engeli: dev kardan adam + iri kar tümsekleri.
+// Normal zıplamayla aşılmaz; rampadan çok yükselirse üstünden geçilebilir.
+const wall = new THREE.Mesh(new THREE.BoxGeometry(8.4, 3.6, 2.05), matSnow);
+wall.position.set(0, 1.8, -0.1);
+wall.castShadow = true;
+wall.receiveShadow = true;
+group.add(wall);
+
+const bottom = new THREE.Mesh(new THREE.SphereGeometry(2.45, 20, 16), matSnow);
+bottom.position.set(0, 2.0, 1.05);
+bottom.castShadow = true;
+group.add(bottom);
+
+const mid = new THREE.Mesh(new THREE.SphereGeometry(1.75, 20, 16), matSnow);
+mid.position.set(0, 4.55, 1.05);
+mid.castShadow = true;
+group.add(mid);
+
+const head = new THREE.Mesh(new THREE.SphereGeometry(1.18, 18, 14), matSnow);
+head.position.set(0, 6.55, 1.05);
+head.castShadow = true;
+group.add(head);
+
+for (const x of [-0.42, 0.42]) {
+const eye = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), darkMat);
+eye.position.set(x, 6.72, 2.08);
+group.add(eye);
+}
+const nose = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.95, 8), noseMat);
+nose.rotation.x = Math.PI / 2;
+nose.position.set(0, 6.55, 2.42);
+group.add(nose);
+
+const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.88, 0.9, 12), darkMat);
+hat.position.set(0, 7.72, 1.05);
+group.add(hat);
+const brim = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.35, 0.16, 12), darkMat);
+brim.position.set(0, 7.18, 1.05);
+group.add(brim);
+
+// Yanlarda iri kar tümsekleri, şerit doluluğu göze net gelsin.
+for (const x of [-3.25, 3.25]) {
+const mound = new THREE.Mesh(new THREE.SphereGeometry(1.35, 14, 10), matSnow);
+mound.position.set(x, 1.15, 0.85);
+mound.scale.set(1.35, 0.8, 1.0);
+mound.castShadow = true;
+group.add(mound);
+}
+
+return group;
+}
+function createLakeIceRamp() {
+const group = new THREE.Group();
+const baseGeo = new THREE.BoxGeometry(5.8, 1.4, 18.5);
+const base = new THREE.Mesh(baseGeo, matSnow);
+base.rotation.x = 0.22;
+base.position.y = -0.65;
+base.castShadow = true;
+base.receiveShadow = true;
+group.add(base);
+
+const iceCap = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.95, 17.2), new THREE.MeshStandardMaterial({ color: 0x8fe5ff, roughness: 0.18, metalness: 0.1, transparent: true, opacity: 0.86 }));
+iceCap.rotation.x = 0.22;
+iceCap.position.y = 0.15;
+group.add(iceCap);
+
+const lip = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.35, 1.0), new THREE.MeshStandardMaterial({ color: 0xdff7ff, roughness: 0.3, metalness: 0.06 }));
+lip.position.set(0, 1.8, -7.8);
+group.add(lip);
+
+const ridgeGeo = new THREE.ConeGeometry(0.38, 1.2, 6);
+for (let i = 0; i < 5; i++) {
+  const ridgeL = new THREE.Mesh(ridgeGeo, new THREE.MeshStandardMaterial({ color: 0xb7f1ff, roughness: 0.22, metalness: 0.08 }));
+  ridgeL.rotation.z = Math.PI * 0.5;
+  ridgeL.rotation.y = Math.PI;
+  ridgeL.position.set(-2.3, 0.15 + i * 0.38, -5.6 + i * 2.9);
+  group.add(ridgeL);
+  const ridgeR = ridgeL.clone();
+  ridgeR.rotation.y = 0;
+  ridgeR.position.x = 2.3;
+  group.add(ridgeR);
+}
+
+const arrowMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+for (const x of [-1.65, 0, 1.65]) {
+  const arrow = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.2), arrowMat);
+  arrow.position.set(x, 1.0, -2.0);
+  arrow.rotation.x = -0.18;
+  group.add(arrow);
+}
+return group;
+}
+
 function createObstacleGroup(type) {
+
 let objGroup = new THREE.Group();
 let hitY = 3.0;
 
@@ -4274,6 +4793,27 @@ hitY = 3.35;
 } else if (type === 'forestTree') {
 objGroup = createForestObstacleTree();
 hitY = 12.0;
+} else if (type === 'forestLogJump') {
+objGroup = createForestJumpLog();
+hitY = 2.25;
+} else if (type === 'forestDuckBranch') {
+objGroup = createForestDuckBranch();
+hitY = 5.2;
+} else if (type === 'villageFenceJump') {
+objGroup = createVillageFenceJump();
+hitY = 2.22;
+} else if (type === 'villageLowBanner') {
+objGroup = createVillageLowBanner();
+hitY = 5.35;
+} else if (type === 'villageBarrel') {
+objGroup = createVillageBarrelObstacle();
+hitY = 9.2;
+} else if (type === 'villageSnowman') {
+objGroup = createVillageSnowmanObstacle();
+hitY = 9.5;
+} else if (type === 'lakeIceRamp') {
+objGroup = createLakeIceRamp();
+hitY = 3.2;
 }
 
 return { objGroup, hitY };
@@ -4373,7 +4913,7 @@ function addGuideCoinsToPattern(pattern) {
 const out = pattern.slice();
 
 for (const item of pattern) {
-if (item.type === 'ramp') {
+if (item.type === 'ramp' || item.type === 'lakeIceRamp') {
 out.push(...makeCoinTrail(item.lane, item.z + 48, 3, 14));
 }
 }
@@ -4599,37 +5139,200 @@ return patterns[index];
 function buildForestPattern() {
 const openLane = randomLane();
 const closed = [-1, 0, 1].filter(lane => lane !== openLane);
-const firstBlocked = randomLane();
-const firstSafe = otherLane(firstBlocked);
-const secondBlocked = firstSafe;
-const secondSafe = [-1, 0, 1].find(lane => lane !== secondBlocked && lane !== firstBlocked) ?? otherLane(secondBlocked);
+const sideBlocked = randomLane();
+const sideSafe = otherLane(sideBlocked);
+const jumpLane = randomLane();
+const duckLane = randomLane();
+const slalomFirst = randomLane();
+const slalomSecond = [-1, 0, 1].find(lane => lane !== slalomFirst && lane !== otherLane(slalomFirst)) ?? otherLane(slalomFirst);
 const patterns = [
-[
-{ type: 'coin', lane: firstSafe, z: -304 },
-{ type: 'coin', lane: firstSafe, z: -326 },
-{ type: 'forestTree', lane: firstBlocked, z: -350 },
-{ type: 'coin', lane: firstSafe, z: -374 }
-],
+// Mecburi şerit değişimi: iki ağaç kapatır, tek açık koridor coin ile gösterilir.
 [
 { type: 'coin', lane: openLane, z: -302 },
-{ type: 'coin', lane: openLane, z: -324 },
+{ type: 'coin', lane: openLane, z: -322 },
 { type: 'forestTree', lane: closed[0], z: -350 },
 { type: 'forestTree', lane: closed[1], z: -350 },
-{ type: 'coin', lane: openLane, z: -378 }
+{ type: 'coin', lane: openLane, z: -378 },
+{ type: 'coin', lane: openLane, z: -396 }
+],
+// Tek ağaçla bir şeridi kapatıp oyuncuyu sağa/sola zorla.
+[
+{ type: 'coin', lane: sideSafe, z: -304 },
+{ type: 'coin', lane: sideSafe, z: -324 },
+{ type: 'forestTree', lane: sideBlocked, z: -350 },
+{ type: 'coin', lane: sideSafe, z: -376 },
+{ type: 'coin', lane: sideSafe, z: -394 }
+],
+// Düşen ağaç: aynı şeritte açıkça okunur ve zıplama ister.
+[
+{ type: 'coin', lane: jumpLane, z: -304 },
+{ type: 'coin', lane: jumpLane, z: -324 },
+{ type: 'forestLogJump', lane: jumpLane, z: -350 },
+{ type: 'coin', lane: jumpLane, z: -382 },
+{ type: 'coin', lane: jumpLane, z: -400 }
+],
+// Alçak dal: aynı şeritte eğilme öğretir.
+[
+{ type: 'coin', lane: duckLane, z: -304 },
+{ type: 'coin', lane: duckLane, z: -324 },
+{ type: 'forestDuckBranch', lane: duckLane, z: -350 },
+{ type: 'coin', lane: duckLane, z: -382 },
+{ type: 'coin', lane: duckLane, z: -400 }
+],
+// Önce yana geç, sonra zıpla.
+[
+{ type: 'forestTree', lane: sideBlocked, z: -350 },
+{ type: 'coin', lane: sideSafe, z: -380 },
+{ type: 'coin', lane: sideSafe, z: -398 },
+{ type: 'forestLogJump', lane: sideSafe, z: -456 },
+{ type: 'coin', lane: sideSafe, z: -488 }
+],
+// Önce yana geç, sonra eğil.
+[
+{ type: 'forestTree', lane: sideBlocked, z: -350 },
+{ type: 'coin', lane: sideSafe, z: -380 },
+{ type: 'coin', lane: sideSafe, z: -398 },
+{ type: 'forestDuckBranch', lane: sideSafe, z: -454 },
+{ type: 'coin', lane: sideSafe, z: -486 }
+],
+// Slalom: soldan sağa veya sağdan sola mecburi geçiş.
+[
+{ type: 'forestTree', lane: slalomFirst, z: -350 },
+{ type: 'coin', lane: 0, z: -378 },
+{ type: 'forestTree', lane: 0, z: -446 },
+{ type: 'coin', lane: slalomSecond, z: -476 },
+{ type: 'forestTree', lane: slalomSecond, z: -542 }
+]
+];
+let index = Math.floor(Math.random() * patterns.length);
+if (index === lastComboPattern) index = (index + 1) % patterns.length;
+lastComboPattern = index;
+return patterns[index];
+}
+
+
+function buildVillagePattern() {
+const openLane = randomLane();
+const closed = [-1, 0, 1].filter(lane => lane !== openLane);
+const jumpLane = randomLane();
+const duckLane = randomLane();
+const blockedLane = randomLane();
+const safeLane = otherLane(blockedLane);
+const secondSafe = [-1, 0, 1].find(lane => lane !== blockedLane && lane !== safeLane) ?? otherLane(safeLane);
+const sideType = Math.random() < 0.52 ? 'villageBarrel' : 'villageSnowman';
+const patterns = [
+[
+{ type: 'coin', lane: openLane, z: -302 },
+{ type: 'coin', lane: openLane, z: -322 },
+{ type: 'villageBarrel', lane: closed[0], z: -350 },
+{ type: 'villageSnowman', lane: closed[1], z: -350 },
+{ type: 'coin', lane: openLane, z: -378 },
+{ type: 'coin', lane: openLane, z: -396 }
 ],
 [
-{ type: 'forestTree', lane: firstBlocked, z: -350 },
-{ type: 'coin', lane: firstSafe, z: -380 },
-{ type: 'forestTree', lane: secondBlocked, z: -452 },
+{ type: 'coin', lane: jumpLane, z: -304 },
+{ type: 'coin', lane: jumpLane, z: -324 },
+{ type: 'villageFenceJump', lane: jumpLane, z: -350 },
+{ type: 'coin', lane: jumpLane, z: -382 },
+{ type: 'coin', lane: jumpLane, z: -400 }
+],
+[
+{ type: 'coin', lane: duckLane, z: -304 },
+{ type: 'coin', lane: duckLane, z: -324 },
+{ type: 'villageLowBanner', lane: duckLane, z: -350 },
+{ type: 'coin', lane: duckLane, z: -382 },
+{ type: 'coin', lane: duckLane, z: -400 }
+],
+[
+{ type: sideType, lane: blockedLane, z: -350 },
+{ type: 'coin', lane: safeLane, z: -378 },
+{ type: 'coin', lane: safeLane, z: -396 },
+{ type: 'villageFenceJump', lane: safeLane, z: -458 },
+{ type: 'coin', lane: safeLane, z: -490 }
+],
+[
+{ type: sideType, lane: blockedLane, z: -350 },
+{ type: 'coin', lane: safeLane, z: -378 },
+{ type: 'coin', lane: safeLane, z: -396 },
+{ type: 'villageLowBanner', lane: safeLane, z: -456 },
+{ type: 'coin', lane: safeLane, z: -488 }
+],
+[
+{ type: 'villageBarrel', lane: blockedLane, z: -350 },
+{ type: 'coin', lane: safeLane, z: -382 },
+{ type: 'villageSnowman', lane: safeLane, z: -452 },
 { type: 'coin', lane: secondSafe, z: -482 },
-{ type: 'forestTree', lane: firstBlocked, z: -554 }
-],
+{ type: 'villageBarrel', lane: secondSafe, z: -552 }
+]
+];
+let index = Math.floor(Math.random() * patterns.length);
+if (index === lastComboPattern) index = (index + 1) % patterns.length;
+lastComboPattern = index;
+return patterns[index];
+}
+
+
+function buildLakePattern() {
+const openLane = randomLane();
+const closed = [-1, 0, 1].filter(lane => lane !== openLane);
+const jumpLane = randomLane();
+const duckLane = randomLane();
+const blockedLane = randomLane();
+const safeLane = otherLane(blockedLane);
+const secondBlocked = [-1, 0, 1].find(lane => lane !== blockedLane && lane !== safeLane) ?? otherLane(safeLane);
+const sideType = Math.random() < 0.52 ? 'villageBarrel' : 'villageSnowman';
+const patterns = [
+// İki geniş engel ile açık koridoru net göster.
 [
-{ type: 'forestTree', lane: -1, z: -350 },
-{ type: 'coin', lane: 0, z: -382 },
-{ type: 'forestTree', lane: 1, z: -444 },
-{ type: 'coin', lane: -1, z: -478 },
-{ type: 'forestTree', lane: 0, z: -536 }
+{ type: 'coin', lane: openLane, z: -300 },
+{ type: 'coin', lane: openLane, z: -320 },
+{ type: 'villageBarrel', lane: closed[0], z: -350 },
+{ type: 'villageSnowman', lane: closed[1], z: -350 },
+{ type: 'coin', lane: openLane, z: -382 },
+{ type: 'coin', lane: openLane, z: -400 }
+],
+// Donmuş gölde çitten atla.
+[
+{ type: 'coin', lane: jumpLane, z: -302 },
+{ type: 'coin', lane: jumpLane, z: -322 },
+{ type: 'villageFenceJump', lane: jumpLane, z: -350 },
+{ type: 'coin', lane: jumpLane, z: -384 },
+{ type: 'coin', lane: jumpLane, z: -402 }
+],
+// Donmuş gölde alçak flamadan eğil.
+[
+{ type: 'coin', lane: duckLane, z: -302 },
+{ type: 'coin', lane: duckLane, z: -322 },
+{ type: 'villageLowBanner', lane: duckLane, z: -350 },
+{ type: 'coin', lane: duckLane, z: -384 },
+{ type: 'coin', lane: duckLane, z: -402 }
+],
+// Önce yana kaç, sonra buz rampası ile uç.
+[
+{ type: sideType, lane: blockedLane, z: -350 },
+{ type: 'coin', lane: safeLane, z: -380 },
+{ type: 'coin', lane: safeLane, z: -398 },
+{ type: 'lakeIceRamp', lane: safeLane, z: -462 },
+{ type: 'coin', lane: safeLane, z: -500 },
+{ type: 'coin', lane: safeLane, z: -518 }
+],
+// Sağ-sol slalom, zıplanamaz/eğilemez iki büyük engel.
+[
+{ type: 'villageBarrel', lane: blockedLane, z: -350 },
+{ type: 'coin', lane: safeLane, z: -382 },
+{ type: 'villageSnowman', lane: safeLane, z: -454 },
+{ type: 'coin', lane: secondBlocked, z: -488 },
+{ type: 'villageBarrel', lane: secondBlocked, z: -560 }
+],
+// Açık koridora ödül olarak buz rampası.
+[
+{ type: 'villageBarrel', lane: closed[0], z: -350 },
+{ type: 'villageSnowman', lane: closed[1], z: -350 },
+{ type: 'coin', lane: openLane, z: -382 },
+{ type: 'coin', lane: openLane, z: -400 },
+{ type: 'lakeIceRamp', lane: openLane, z: -458 },
+{ type: 'coin', lane: openLane, z: -496 },
+{ type: 'coin', lane: openLane, z: -514 }
 ]
 ];
 let index = Math.floor(Math.random() * patterns.length);
@@ -4661,8 +5364,35 @@ const base = [{ type: type, lane: lane, z: -350 }];
 return addGuideCoinsToPattern(base);
 }
 
+
+function makeCaveObstaclePattern() {
+const lanes = [-1, 0, 1];
+const openLane = lanes[Math.floor(Math.random() * lanes.length)];
+const blocked = lanes.filter(lane => lane !== openLane);
+const pattern = [];
+
+if (Math.random() < 0.62) {
+const lane = lanes[Math.floor(Math.random() * lanes.length)];
+pattern.push({ type: 'mineCart', lane: lane, z: -350 });
+return addGuideCoinsToPattern(pattern);
+}
+
+// İki vagon gelir ama bir koridor kesin açık kalır. Böylece hata yüzünden üç şerit kapanmaz.
+pattern.push({ type: 'mineCart', lane: blocked[0], z: -350 });
+pattern.push({ type: 'mineCart', lane: blocked[1], z: -386 });
+pattern.push({ type: 'coin', lane: openLane, z: -350 });
+pattern.push({ type: 'coin', lane: openLane, z: -368 });
+pattern.push({ type: 'coin', lane: openLane, z: -386 });
+pattern.push({ type: 'coin', lane: openLane, z: -404 });
+return pattern;
+}
+
 function spawnObject() {
-if (!AUTO_OBSTACLE_SPAWNING_ENABLED) return;
+const caveOnlySpawning = CAVE_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'cave';
+const forestOnlySpawning = FOREST_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'forest';
+const villageOnlySpawning = VILLAGE_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'village';
+const lakeOnlySpawning = LAKE_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'lake';
+if (!AUTO_OBSTACLE_SPAWNING_ENABLED && !caveOnlySpawning && !forestOnlySpawning && !villageOnlySpawning && !lakeOnlySpawning) return;
 if (!isPlaying || isCrashed) return;
 if (coursePortal && coursePortal.position.z >= -240) return;
 
@@ -4675,17 +5405,26 @@ const tier = getDifficultyTier();
 // Hız arttıkça boşluk otomatik azalır ama minimum güvenli boşluk korunur.
 const spawnGapByTier = [118, 100, 84, 72, 62];
 const speedPressure = Math.min(22, Math.max(0, (speed - baseSpeed) * 18));
-const spawnGap = mapPhase === 'cliff' || mapPhase === 'forest'
-  ? Math.max(mapPhase === 'forest' ? 104 : 92, spawnGapByTier[tier] - speedPressure)
+const spawnGap = mapPhase === 'cliff' || mapPhase === 'forest' || mapPhase === 'village' || mapPhase === 'lake'
+  ? Math.max(
+      mapPhase === 'forest' ? 118 : (mapPhase === 'village' ? 112 : (mapPhase === 'lake' ? 116 : 92)),
+      spawnGapByTier[tier] - speedPressure
+    )
   : Math.max(56, spawnGapByTier[tier] - speedPressure);
 if (distance - lastAnySpawnDistance < spawnGap) return;
 
 // İlerledikçe tek engel yerine bilinçli kombinasyonlar daha çok gelir.
 const comboChanceByTier = [0.34, 0.46, 0.58, 0.68, 0.76];
 const useCombo = Math.random() < comboChanceByTier[tier] && distance > 190;
-const pattern = mapPhase === 'forest'
-  ? buildForestPattern()
-  : (mapPhase === 'cliff' ? buildCliffPattern() : (useCombo ? buildComboPattern() : buildSinglePattern()));
+const pattern = mapPhase === 'cave'
+  ? makeCaveObstaclePattern()
+  : (mapPhase === 'forest'
+    ? buildForestPattern()
+    : (mapPhase === 'village'
+      ? buildVillagePattern()
+      : (mapPhase === 'lake'
+        ? buildLakePattern()
+        : (mapPhase === 'cliff' ? buildCliffPattern() : (useCombo ? buildComboPattern() : buildSinglePattern())))));
 
 for (const item of pattern) {
 spawnObstacleAt(item.type, item.lane, item.z);
@@ -4923,7 +5662,7 @@ playSound('jump'); playSound('air'); playAnim('jump');
 }
 function checkRampProximity() {
 for (let obs of obstacles) {
-if (obs.type === 'ramp' && obs.active) {
+if ((obs.type === 'ramp' || obs.type === 'lakeIceRamp') && obs.active) {
 const zDist = obs.mesh.position.z - player.position.z;
 const xDist = Math.abs(obs.mesh.position.x - playerX);
 if (zDist > -6.0 && zDist < 3.0 && xDist < 2.0) return true;
@@ -6034,6 +6773,9 @@ snow: new THREE.MeshStandardMaterial({ color: 0xeef5ff, roughness: 0.8 }),
 plank: new THREE.MeshStandardMaterial({ color: 0x5a3c28, roughness: 0.9 }),
 rope: new THREE.MeshStandardMaterial({ color: 0x2a2520, roughness: 0.8, metalness: 0.4 }),
 cloud: new THREE.PointsMaterial({ color: 0xffffff, size: 14, map: createSoftCloudTexture(), transparent: true, opacity: 0.5, depthWrite: false }),
+gapEdge: new THREE.MeshStandardMaterial({ color: 0xeef5ff, roughness: 0.7, metalness: 0.04, emissive: 0x0e7490, emissiveIntensity: 0.08 }),
+gapWarn: new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false }),
+gapDanger: new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false }),
 peak: new THREE.MeshStandardMaterial({ vertexColors: true, bumpMap: rockTex, bumpScale: 0.4, roughness: 0.95, metalness: 0.02 })
 };
 }
@@ -6057,18 +6799,49 @@ let val = 0, amp = 0.55, freq = 1;
 for (let o = 0; o < 4; o++) { val += cNoise(x * freq, z * freq, seed + o * 5.1, 16 * freq) * amp; freq *= 2; amp *= 0.5; }
 return val;
 }
-// Temple Run mantığı: köprüde kırık şerit bölümleri. Belirli z aralıklarında
-// bir şerit (sol/orta/sağ) eksik olur -> oyuncu mecbur diğer şeride geçer.
-// Desen z'de 80 birim periyotlu (400/80=5) -> parçalar arasında döşenebilir.
+// Temple Run mantığı: kanyon yolunda gerçek eksik şeritler.
+// Siyah kaplama yok; yol geometrisi burada gerçekten aşağı düşer.
+// Bazı bölgelerde 1 şerit, bazı bölgelerde 2 şerit eksik kalır.
+function canyonGapSections() {
+return [
+// 200 metre Temple Run kırığı.
+// ÖNEMLİ FIX: Kırık artık chunk sınırından TAŞMAZ (tamamı tek parçanın içinde).
+// Eskiden 80..280 idi ve 200 sınırını aşıyordu; ardışık parçalardan biri aynalı
+// (scale.x = -1) gelince güvenli şerit yarı yolda taraf değiştiriyordu -> haksız düşme.
+// Tek parça içinde kalınca ayna sorun olmaktan çıkar: her kırıkta güvenli şerit
+// değişebilir ama kırık kendi içinde her zaman tutarlıdır.
+{ from: -60, to: 140, missing: [0, 1] }     // 200m: orta + sağ yok, tek güvenli koridor sol
+];
+}
+
+function canyonVisibleGapRanges(seg) {
+const ranges = [];
+for (const offset of [-400, 0, 400]) {
+const from = seg.from + offset;
+const to = seg.to + offset;
+if (to < -200 || from > 200) continue;
+ranges.push({
+from: Math.max(-200, from),
+to: Math.min(200, to),
+missing: seg.missing.slice()
+});
+}
+return ranges;
+}
+
+function canyonMissingLanesAtZ(z, margin = 0) {
+if (typeof CANYON_BROKEN_LANES_ENABLED !== 'undefined' && !CANYON_BROKEN_LANES_ENABLED) return [];
+for (const seg of canyonGapSections()) {
+for (const part of canyonVisibleGapRanges(seg)) {
+if (z >= part.from + margin && z <= part.to - margin) return part.missing;
+}
+}
+return [];
+}
+
 function canyonGap(x, z) {
 const lane = x < -4 ? -1 : (x > 4 ? 1 : 0);
-const local = (((z + 200) % 80) + 80) % 80;
-if (local < 22) {
-const seg = Math.floor(((((z + 200) % 400) + 400) % 400) / 80); // 0..4
-const broken = (seg % 3) - 1;   // -1,0,1 döngü
-if (lane === broken) return true;
-}
-return false;
+return canyonMissingLanesAtZ(z, 0).includes(lane);
 }
 // Kanyon yüksekliği: ortada karlı köprü (kırık bölümler uçuruma düşer);
 // yanlarda dik buz gorge + çok-oktavlı keskin sırtlı duvarlar. z'de döşenebilir.
@@ -6077,7 +6850,7 @@ const ax = Math.abs(x);
 const nz = (z + 200) / 25;
 const trackWave = Math.sin(z * 0.03) * 0.05;
 if (ax < 15) {
-if (canyonGap(x, z)) return -60 + cFbm(x * 0.1, nz, 9.2) * 4;   // kırık şerit: boşluk
+if (canyonGap(x, z)) return -88 + cFbm(x * 0.1, nz, 9.2) * 5.5;   // kırık şerit: derin boşluk
 return trackWave + Math.sin(x * 0.4 + z * 0.05) * 0.05;
 }
 let base;
@@ -6089,6 +6862,132 @@ const ridge = 1 - Math.abs(cFbm(x * 0.045, nz, 12.3) * 2 - 1);
 const detail = cFbm(x * 0.11, nz, 21.7);
 const rock = (broad * 9 + ridge * 15 + detail * 3.5) * amp;
 return base + rock + trackWave;
+}
+
+function addCanyonBrokenLaneMarkers(chunk, materials) {
+if (!CANYON_BROKEN_LANES_ENABLED) return;
+const group = new THREE.Group();
+
+const laneCenterX = lane => lane * laneWidth;
+const safeLanes = missing => [-1, 0, 1].filter(l => !missing.includes(l));
+
+function addBlock(x, y, z, w, h, d, mat) {
+const edge = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+edge.position.set(x, y, -z);
+edge.castShadow = true;
+edge.receiveShadow = true;
+group.add(edge);
+return edge;
+}
+
+function addWarnStripe(x, z, width, mat) {
+const stripe = new THREE.Mesh(new THREE.PlaneGeometry(width, 1.45), mat);
+stripe.rotation.x = -Math.PI / 2;
+stripe.position.set(x, 0.22, -z);
+group.add(stripe);
+}
+
+for (const seg of canyonGapSections()) {
+for (const part of canyonVisibleGapRanges(seg)) {
+const missing = part.missing;
+const startZ = part.from;
+const endZ = part.to;
+const len = endZ - startZ;
+const centerZ = (startZ + endZ) * 0.5;
+
+// Kırık başlangıç/bitiriş buz kenarları artık daha kalın.
+for (const lane of missing) {
+const x = laneCenterX(lane);
+addBlock(x, 0.24, startZ, laneWidth * 0.84, 0.34, 0.95, materials.gapEdge);
+addBlock(x, 0.22, endZ, laneWidth * 0.76, 0.30, 0.75, materials.gapEdge);
+
+// Uzun kesik boyunca iki yan kırık dudak: siyah yama değil, buz/kırık kenar.
+addBlock(x - laneWidth * 0.43, 0.18, centerZ, 0.34, 0.26, len * 0.94, materials.gapEdge);
+addBlock(x + laneWidth * 0.43, 0.18, centerZ, 0.34, 0.26, len * 0.94, materials.gapEdge);
+
+// Uzun bölüm boyunca daha çok kırık buz parçası.
+const chipCount = Math.max(6, Math.floor(len / 18));
+for (let i = 0; i < chipCount; i++) {
+const chip = new THREE.Mesh(new THREE.DodecahedronGeometry(0.52 + (i % 3) * 0.07, 0), materials.gapEdge);
+chip.position.set(
+x + (Math.random() - 0.5) * laneWidth * 0.62,
+0.20 + Math.random() * 0.06,
+-(startZ + 6 + i * ((len - 12) / Math.max(1, chipCount - 1)))
+);
+chip.scale.set(1.75, 0.28, 0.92);
+chip.rotation.set(Math.random() * 0.35, Math.random() * Math.PI, Math.random() * 0.22);
+chip.castShadow = true;
+group.add(chip);
+}
+
+// Yaklaşma çizgileri: sadece gerçekten yaklaşılan başlangıçlarda, daha uzun ve belirgin.
+if (startZ > -196) {
+for (let i = 0; i < 6; i++) {
+addWarnStripe(x, startZ - 8 - i * 5.5, laneWidth * 0.64, i < 2 ? materials.gapDanger : materials.gapWarn);
+}
+}
+}
+
+// Güvenli şeritleri daha net gösteren mavi yön çizgileri.
+if (startZ > -196) {
+for (const lane of safeLanes(missing)) {
+const x = laneCenterX(lane);
+for (let i = 0; i < 4; i++) {
+addWarnStripe(x, startZ - 12 - i * 6, laneWidth * 0.42, materials.gapWarn);
+}
+}
+}
+}
+}
+
+chunk.add(group);
+chunk.userData.canyonGapMarkers = group;
+}
+
+function isPlayerOverCanyonGap() {
+if (!CANYON_BROKEN_LANES_ENABLED || mapPhase !== 'canyon' || isCrashed || !worldChunks || !worldChunks.length) return false;
+if (reviveInvulnFrames > 0) return false;
+
+// Zıplama/rampa ile boşluğun üstünden geçebilsin; yere yakınsa düşsün.
+if (playerY > basePlayerY + 1.05) return false;
+
+// Temiz yolda yanlış yanma fix:
+// Oyuncu şerit değiştirirken playerX ara konumda kalıyor. Bu yüzden currentLane ile değil,
+// karakterin gerçekten oturduğu en yakın şeritle bakıyoruz.
+// Karakter şeridin ortasına yeterince oturmamışsa düşme kontrolü yapmıyoruz.
+const nearestLane = Math.max(-1, Math.min(1, Math.round(playerX / laneWidth)));
+const laneCenterX = nearestLane * laneWidth;
+if (Math.abs(playerX - laneCenterX) > laneWidth * 0.26) return false;
+
+for (const chunk of worldChunks) {
+if (!chunk || chunk.userData.biomeName !== 'canyon') continue;
+
+// Chunk kenarında iki parça üst üste kontrol edilip temiz yolda yanma yapmasın.
+const localWorldZ = player.position.z - chunk.position.z;
+if (localWorldZ < -198 || localWorldZ > 198) continue;
+
+// Terrain PlaneGeometry'de kullanılan z değeri world Z'nin tersidir.
+const terrainZ = -localWorldZ;
+
+// Gap başlangıç/bitiş çizgisinde tolerans: çizginin üstünde haksız düşme olmasın.
+const missingLocalLanes = canyonMissingLanesAtZ(terrainZ, 3.0);
+if (!missingLocalLanes.length) continue;
+
+// Chunk aynalanmışsa görselde eksik olan dünya şeridi de aynalanır.
+const scaleX = chunk.scale && chunk.scale.x ? Math.sign(chunk.scale.x) || 1 : 1;
+const missingWorldLanes = missingLocalLanes.map(lane => lane * scaleX);
+
+if (missingWorldLanes.includes(nearestLane)) return true;
+}
+return false;
+}
+
+function triggerCanyonGapFall() {
+if (isCrashed) return;
+crashMode = 'fallGap';
+playSound('crash');
+triggerDismemberCrash('CANYON FALL');
+showTrickName('FALL!');
 }
 
 function createSkyCanyonChunk(materials) {
@@ -6167,6 +7066,8 @@ const rope = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 396), materials.ro
 rope.position.set(side * 14.5, 1.35, 0);
 chunk.add(rope);
 }
+
+addCanyonBrokenLaneMarkers(chunk, materials);
 
 // --- Gorge'da süzülen sis/bulut katmanı (derinlik hissi) ---
 const cloudGeo = new THREE.BufferGeometry();
@@ -6826,6 +7727,14 @@ worldBiomes.forEach(b => { b.pool = []; });
 
 function getBiomeForIndex(idx) {
 const order = worldBiomes;
+if (START_IN_FOURTH_DEV_MODE) {
+const targetBiome = order.find(b => b.name === FOURTH_MAP_BIOME_NAME);
+if (targetBiome) return targetBiome;
+}
+if (START_IN_FOREST_DEV_MODE) {
+const forestBiome = order.find(b => b.name === 'forest');
+if (forestBiome) return forestBiome;
+}
 return order[Math.floor(idx / SEGMENT_CHUNKS) % order.length];
 }
 
@@ -6865,12 +7774,14 @@ const biome = getBiomeForIndex(i);
 const c = acquireChunk(biome);
 c.position.set(0, 0, -i * CHUNK_LEN);
 c.userData.index = i;
+configureUnifiedChunk(c, i);
 worldGroup.add(c);
 worldChunks.push(c);
 }
 worldChunkCounter = ACTIVE_CHUNKS;
 const first = getBiomeForIndex(0);
 applyAtmosphere(first, first, 0);
+mapPhase = first.name;
 prewarmBiomes();
 }
 
@@ -6878,6 +7789,7 @@ prewarmBiomes();
 let biomesPrewarmed = false;
 function prewarmBiomes() {
 if (biomesPrewarmed || !worldBiomes) return;
+if (START_IN_FOREST_DEV_MODE || START_IN_FOURTH_DEV_MODE) { biomesPrewarmed = true; return; }
 biomesPrewarmed = true;
 let i = 1;
 const step = () => {
@@ -6960,6 +7872,7 @@ const biome = getBiomeForIndex(worldChunkCounter);
 const fresh = acquireChunk(biome);
 fresh.position.set(0, 0, minZ - CHUNK_LEN);
 fresh.userData.index = worldChunkCounter;
+configureUnifiedChunk(fresh, worldChunkCounter);
 worldGroup.add(fresh);
 worldChunks[maxIdx] = fresh;
 worldChunkCounter++;
@@ -7031,6 +7944,13 @@ playerX += diffX * 0.15;
 const carveLean = diffX * 0.45;
 skeleton.board.rotation.z = -carveLean;
 const carveTurn = -carveLean * 0.6;
+
+if (isPlayerOverCanyonGap()) {
+triggerCanyonGapFall();
+renderFrame();
+return;
+}
+
 if (slideTimer > 0) {
 slideTimer--;
 isDucking = true;
@@ -7324,6 +8244,7 @@ let shakeY = (Math.random() - 0.5) * shakeIntensity;
 if (shakeIntensity > 0) shakeIntensity -= 0.05;
 if (activeSpeed > 1.2 && !isJumping) shakeY += Math.sin(Date.now()*0.05)*0.03;
 camera.lookAt(playerX + shakeX, playerY + 0.15 + shakeY, player.position.z - 27.0);
+if (trailParticles && trailParticles.visible) {
 const trailPos = trailParticles.geometry.attributes.position.array;
 for(let i=0; i<trailPos.length; i+=3) {
 trailPos[i+2] += activeSpeed;
@@ -7338,6 +8259,7 @@ trailPos[i+2] = player.position.z - 1.0;
 }
 }
 trailParticles.geometry.attributes.position.needsUpdate = true;
+}
 spawnObject();
 for (let i = obstacles.length - 1; i >= 0; i--) {
 const obs = obstacles[i];
@@ -7367,7 +8289,7 @@ removeObstacleAt(i);
 registerCoinCollect(coinWorldPos);
 continue;
 }
-} else if (obs.type === 'ramp') {
+} else if (obs.type === 'ramp' || obs.type === 'lakeIceRamp') {
 const zDist = obs.mesh.position.z - player.position.z;
 const xDist = Math.abs(obs.mesh.position.x - playerX);
 if (zDist > -4.0 && zDist < 1.0 && xDist < 2.2) {
