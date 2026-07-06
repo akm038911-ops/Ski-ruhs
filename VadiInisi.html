@@ -1412,6 +1412,26 @@ const biome = getBiomeForIndex(index);
 const prevBiome = getBiomeForIndex(Math.max(0, index - 1));
 const isCaveEntrance = biome && biome.name === 'cave' && (!prevBiome || prevBiome.name !== 'cave');
 if (chunk.userData.biomeName === 'cave') setUnifiedCaveEntrance(chunk, isCaveEntrance);
+if (chunk.userData.biomeName === 'canyon') spawnCanyonGapObstacles(chunk);
+}
+
+// Çukur bölümlerinde oyuncunun kaçtığı GÜVENLİ şeride eğilme/zıplama engelleri koyar.
+// Engeller dünya koordinatında spawn edilir; zemin ve engeller aynı hızda aktığı
+// için çukurla hizalı kalırlar.
+function spawnCanyonGapObstacles(chunk) {
+if (typeof CANYON_BROKEN_LANES_ENABLED !== 'undefined' && !CANYON_BROKEN_LANES_ENABLED) return;
+const layout = chunk.userData.gapLayout || [];
+for (const seg of layout) {
+const safe = [-1, 0, 1].filter(l => !seg.missing.includes(l));
+if (!safe.length) continue;
+const len = seg.to - seg.from;
+const spots = [seg.from + len * 0.32, seg.from + len * 0.7];
+for (let s = 0; s < spots.length; s++) {
+const lane = safe[s % safe.length];
+const type = (s % 2 === 0) ? pickFrom(duckTypes) : pickFrom(jumpTypes);
+spawnObstacleAt(type, lane, chunk.position.z - spots[s]);
+}
+}
 }
 
 function createIceCaveChunk(materials) {
@@ -6802,14 +6822,20 @@ return val;
 // Temple Run mantığı: kanyon yolunda gerçek eksik şeritler.
 // Siyah kaplama yok; yol geometrisi burada gerçekten aşağı düşer.
 // Bazı bölgelerde 1 şerit, bazı bölgelerde 2 şerit eksik kalır.
-function canyonGapSections() {
-return [
-// 200 metre Temple Run kırığı (orijinal yerleşim: doğuş alanı temiz kalır).
-// Not: Bölüm chunk sınırından taşarak döşenir; ayna kaynaklı taraf-değiştirme
-// sorunu, kanyon parçalarının AYNALANMAMASIYLA (acquireChunk) kökten çözüldü.
-{ from: 80, to: 280, missing: [0, 1] }      // 200m: orta + sağ yok, tek güvenli koridor sol
+// 3 FARKLI ÇUKUR DÜZENİ (her kanyon parçası birini rastgele alır):
+// Ağırlık sağ şeritte; C düzeni "karışık" (zikzak zorlar).
+// Kurallar: bölümler chunk sınırından TAŞMAZ (-195..195) ve pozitif bölümler
+// from>=80 (dev modda doğuş alanı temiz kalır).
+const CANYON_GAP_LAYOUTS = [
+// A) Klasik: sağ şerit iki kez kırık
+[ { from: 80, to: 185, missing: [1] }, { from: -150, to: -45, missing: [1] } ],
+// B) Geniş: orta+sağ birlikte, sonra sağ tek
+[ { from: 80, to: 190, missing: [0, 1] }, { from: -160, to: -70, missing: [1] } ],
+// C) Karışık: sağ -> orta -> sol+orta
+[ { from: 85, to: 175, missing: [1] }, { from: -80, to: -20, missing: [0] }, { from: -190, to: -120, missing: [-1, 0] } ]
 ];
-}
+let activeCanyonSections = CANYON_GAP_LAYOUTS[0];
+function canyonGapSections() { return activeCanyonSections; }
 
 function canyonVisibleGapRanges(seg) {
 const ranges = [];
@@ -6828,9 +6854,9 @@ missing: seg.missing.slice()
 return ranges;
 }
 
-function canyonMissingLanesAtZ(z, margin = 0) {
+function canyonMissingLanesAtZ(z, margin = 0, sections) {
 if (typeof CANYON_BROKEN_LANES_ENABLED !== 'undefined' && !CANYON_BROKEN_LANES_ENABLED) return [];
-for (const seg of canyonGapSections()) {
+for (const seg of (sections || activeCanyonSections)) {
 for (const part of canyonVisibleGapRanges(seg)) {
 // Tolerans (margin) yalnız GERÇEK kırım uçlarına uygulanır; chunk sınırındaki
 // kırpılmış uçta boşluk kesintisiz devam eder (ortada algılamasız şerit kalmaz).
@@ -7024,7 +7050,7 @@ if (localWorldZ < -198 || localWorldZ > 198) continue;
 const terrainZ = -localWorldZ;
 
 // Gap başlangıç/bitiş çizgisinde tolerans: çizginin üstünde haksız düşme olmasın.
-const missingLocalLanes = canyonMissingLanesAtZ(terrainZ, 3.0);
+const missingLocalLanes = canyonMissingLanesAtZ(terrainZ, 3.0, chunk.userData.gapLayout);
 if (!missingLocalLanes.length) continue;
 
 // Chunk aynalanmışsa görselde eksik olan dünya şeridi de aynalanır.
@@ -7047,6 +7073,9 @@ showTrickName('FALL!');
 function createSkyCanyonChunk(materials) {
 const chunk = new THREE.Group();
 const dummy = new THREE.Object3D();
+// Bu parçanın çukur düzeni: 3 preset'ten rastgele seçilir (çeşitlilik).
+activeCanyonSections = CANYON_GAP_LAYOUTS[Math.floor(Math.random() * CANYON_GAP_LAYOUTS.length)];
+chunk.userData.gapLayout = activeCanyonSections;
 
 // --- Tek parça kayalık kanyon arazisi (yüksek çözünürlük) ---
 const geo = new THREE.PlaneGeometry(240, 400, 132, 116);
@@ -7065,10 +7094,22 @@ const x = pos.getX(i);
 const y = pos.getZ(i);                 // displaced yükseklik (plane henüz döndürülmedi)
 const ax = Math.abs(x);
 let r, g, b;
+const zz = pos.getY(i);
 if (ax < 14 && y > -2.5) {
 r = 0.84; g = 0.89; b = 0.97;        // köprü karı (beyaz-mavi)
+// GERÇEKÇİLİK: çukur kenarına yaklaşan karda çatlaklı/kirli gri-mavi halka
+const info2 = canyonGapInfoAtZ(zz);
+if (info2) {
+const xr2 = canyonMissingXRange(info2.missing);
+const dx2 = Math.min(x - xr2[0], xr2[1] - x);
+const dz2 = Math.min(zz - info2.rawFrom, info2.rawTo - zz);
+const e2 = Math.min(dx2, dz2);
+if (e2 > -6 && e2 < 1.2) {
+const k = Math.min(1, (1.2 - e2) / 7.2) * 0.55;
+r -= 0.22 * k; g -= 0.19 * k; b -= 0.13 * k;
+}
+}
 } else if (ax < 15 && y <= -2.5) {
-const zz = pos.getY(i);
 if (y <= -105) {
 // DİPTEKİ MANZARA: minik vadi tabanı — karlı zemin, koyu çam lekeleri, kıvrılan nehir
 const river = Math.abs(x - Math.sin(zz * 0.045) * 5) < 2.4;
@@ -7835,6 +7876,8 @@ if (c.parent) c.parent.remove(c);
 
 function initUnifiedWorld() {
 buildBiomeRegistry();
+// Yeniden kurulumda eski chunk-engelleri temizle (dev modda çift spawn olmasın)
+if (obstacles && obstacles.length) clearObstaclesForCourseChange();
 for (const ch of worldChunks) releaseChunk(ch);
 worldChunks = [];
 worldTravel = 0;
