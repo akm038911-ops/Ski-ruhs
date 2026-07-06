@@ -6870,7 +6870,8 @@ if (info) {
 const xr = canyonMissingXRange(info.missing);
 const dx = Math.min(x - xr[0], xr[1] - x);
 const dz = Math.min(z - info.from, info.to - z);
-const jag = (cFbm(x * 0.33 + 7, (z + 200) / 8, 4.7) - 0.5) * 4.0;
+const raw = (cFbm(x * 0.33 + 7, (z + 200) / 8, 4.7) - 0.5) * 4.0;
+const jag = raw > 0 ? raw : raw * 0.4;   // içe oyma ≤0.8: algılama çekirdeği hep deliğin içinde
 const e = Math.min(dx, dz) + jag;
 if (e > 0) {
 const wall = Math.min(1, e / 1.8);   // gerilmiş dik quad yerine kısa kırım şevi
