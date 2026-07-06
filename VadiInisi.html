@@ -6804,13 +6804,10 @@ return val;
 // Bazı bölgelerde 1 şerit, bazı bölgelerde 2 şerit eksik kalır.
 function canyonGapSections() {
 return [
-// 200 metre Temple Run kırığı.
-// ÖNEMLİ FIX: Kırık artık chunk sınırından TAŞMAZ (tamamı tek parçanın içinde).
-// Eskiden 80..280 idi ve 200 sınırını aşıyordu; ardışık parçalardan biri aynalı
-// (scale.x = -1) gelince güvenli şerit yarı yolda taraf değiştiriyordu -> haksız düşme.
-// Tek parça içinde kalınca ayna sorun olmaktan çıkar: her kırıkta güvenli şerit
-// değişebilir ama kırık kendi içinde her zaman tutarlıdır.
-{ from: -60, to: 140, missing: [0, 1] }     // 200m: orta + sağ yok, tek güvenli koridor sol
+// 200 metre Temple Run kırığı (orijinal yerleşim: doğuş alanı temiz kalır).
+// Not: Bölüm chunk sınırından taşarak döşenir; ayna kaynaklı taraf-değiştirme
+// sorunu, kanyon parçalarının AYNALANMAMASIYLA (acquireChunk) kökten çözüldü.
+{ from: 80, to: 280, missing: [0, 1] }      // 200m: orta + sağ yok, tek güvenli koridor sol
 ];
 }
 
@@ -6823,6 +6820,8 @@ if (to < -200 || from > 200) continue;
 ranges.push({
 from: Math.max(-200, from),
 to: Math.min(200, to),
+rawFrom: from,               // kırpılmamış uçlar: sınırda sahte "kenar" oluşmasın
+rawTo: to,
 missing: seg.missing.slice()
 });
 }
@@ -6833,7 +6832,9 @@ function canyonMissingLanesAtZ(z, margin = 0) {
 if (typeof CANYON_BROKEN_LANES_ENABLED !== 'undefined' && !CANYON_BROKEN_LANES_ENABLED) return [];
 for (const seg of canyonGapSections()) {
 for (const part of canyonVisibleGapRanges(seg)) {
-if (z >= part.from + margin && z <= part.to - margin) return part.missing;
+// Tolerans (margin) yalnız GERÇEK kırım uçlarına uygulanır; chunk sınırındaki
+// kırpılmış uçta boşluk kesintisiz devam eder (ortada algılamasız şerit kalmaz).
+if (z >= part.from && z <= part.to && z >= part.rawFrom + margin && z <= part.rawTo - margin) return part.missing;
 }
 }
 return [];
@@ -6869,7 +6870,8 @@ if (info) {
 // (Pürüz ±2 birim; algılamanın 3 birimlik payı içinde kalır, oynanış değişmez.)
 const xr = canyonMissingXRange(info.missing);
 const dx = Math.min(x - xr[0], xr[1] - x);
-const dz = Math.min(z - info.from, info.to - z);
+// dz ham uçlara göre: chunk sınırında (kırpılmış uçta) sahte kırım kenarı oluşmaz
+const dz = Math.min(z - info.rawFrom, info.rawTo - z);
 const raw = (cFbm(x * 0.33 + 7, (z + 200) / 8, 4.7) - 0.5) * 4.0;
 const jag = raw > 0 ? raw : raw * 0.4;   // içe oyma ≤0.8: algılama çekirdeği hep deliğin içinde
 const e = Math.min(dx, dz) + jag;
@@ -6927,14 +6929,20 @@ const len = endZ - startZ;
 const centerZ = (startZ + endZ) * 0.5;
 
 // Kırık başlangıç/bitiriş buz kenarları artık daha kalın.
+// Bu uçlar gerçek kırım mı, yoksa chunk sınırında kırpılmış devam mı?
+const realStart = part.rawFrom >= -200;
+const realEnd = part.rawTo <= 200;
 for (const lane of missing) {
 const x = laneCenterX(lane);
-addBlock(x, 0.24, startZ, laneWidth * 0.84, 0.34, 0.95, materials.gapEdge);
-addBlock(x, 0.22, endZ, laneWidth * 0.76, 0.30, 0.75, materials.gapEdge);
+if (realStart) addBlock(x, 0.24, startZ, laneWidth * 0.84, 0.34, 0.95, materials.gapEdge);
+if (realEnd) addBlock(x, 0.22, endZ, laneWidth * 0.76, 0.30, 0.75, materials.gapEdge);
 
-// Kırım hattından sarkan buz sarkıtları (iki kırılma çizgisinde)
+// Kırım hattından sarkan buz sarkıtları (yalnız gerçek kırılma çizgilerinde)
 const icicleGeo = new THREE.ConeGeometry(0.14, 1.2, 5);
-for (const ez of [startZ, endZ]) {
+const fractureLines = [];
+if (realStart) fractureLines.push(startZ);
+if (realEnd) fractureLines.push(endZ);
+for (const ez of fractureLines) {
 for (let k = 0; k < 7; k++) {
 const ic = new THREE.Mesh(icicleGeo, materials.gapEdge);
 ic.position.set(x + (Math.random() - 0.5) * laneWidth * 0.7, -0.55 - Math.random() * 0.5, -(ez + (Math.random() - 0.5) * 1.6));
@@ -7805,7 +7813,9 @@ biome.pool.push(c);
 }
 c.userData.inUse = true;
 // Ayna çevirme: aynı varyant bile sağ-sol ters dizilimle gelir -> çeşitlilik 2x.
-c.scale.x = Math.random() < 0.5 ? -1 : 1;
+// KANYON HARİÇ: kırık yol chunk sınırından taştığı için aynalanırsa güvenli
+// şerit yarı yolda taraf değiştirir (haksız düşme). Kanyon hep düz kalır.
+c.scale.x = (biome.name === 'canyon') ? 1 : (Math.random() < 0.5 ? -1 : 1);
 return c;
 }
 
