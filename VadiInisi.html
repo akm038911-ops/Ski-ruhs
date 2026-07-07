@@ -1412,26 +1412,7 @@ const biome = getBiomeForIndex(index);
 const prevBiome = getBiomeForIndex(Math.max(0, index - 1));
 const isCaveEntrance = biome && biome.name === 'cave' && (!prevBiome || prevBiome.name !== 'cave');
 if (chunk.userData.biomeName === 'cave') setUnifiedCaveEntrance(chunk, isCaveEntrance);
-if (chunk.userData.biomeName === 'canyon') spawnCanyonGapObstacles(chunk);
-}
-
-// Çukur bölümlerinde oyuncunun kaçtığı GÜVENLİ şeride eğilme/zıplama engelleri koyar.
-// Engeller dünya koordinatında spawn edilir; zemin ve engeller aynı hızda aktığı
-// için çukurla hizalı kalırlar.
-function spawnCanyonGapObstacles(chunk) {
-if (typeof CANYON_BROKEN_LANES_ENABLED !== 'undefined' && !CANYON_BROKEN_LANES_ENABLED) return;
-const layout = chunk.userData.gapLayout || [];
-for (const seg of layout) {
-const safe = [-1, 0, 1].filter(l => !seg.missing.includes(l));
-if (!safe.length) continue;
-const len = seg.to - seg.from;
-const spots = [seg.from + len * 0.32, seg.from + len * 0.7];
-for (let s = 0; s < spots.length; s++) {
-const lane = safe[s % safe.length];
-const type = (s % 2 === 0) ? pickFrom(duckTypes) : pickFrom(jumpTypes);
-spawnObstacleAt(type, lane, chunk.position.z - spots[s]);
-}
-}
+// (Kanyon güvenli-şerit engelleri kullanıcı isteğiyle kaldırıldı.)
 }
 
 function createIceCaveChunk(materials) {
