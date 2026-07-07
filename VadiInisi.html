@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Vadi İnişi - Buz Kanyonu 200m Kırık Yol</title>
+<title>Vadi İnişi - Kayak Merkezi Resort Kayalik Dolgu Kaldirildi</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
@@ -655,15 +655,17 @@ let animationFrameId;
 const laneWidth = 12.0; let currentLane = 0, playerX = 0, playerY = 0, velocityY = 0;
 // Harita üretim şablonu: oyun mekanikleri durur, otomatik eski engel/coin üretimi kapalıdır.
 const AUTO_OBSTACLE_SPAWNING_ENABLED = false;
-const CAVE_OBSTACLE_SPAWNING_ENABLED = true;
-// GELİŞTİRME MODU: İlk haritaları bekletmeden oyunu direkt seçili biome'da başlatır. Şu an buz kanyonu test modu aktiftir.
+const CAVE_OBSTACLE_SPAWNING_ENABLED = false;
+// GELİŞTİRME MODU: İlk haritaları bekletmeden oyunu direkt seçili biome'da başlatır. Şu an kayak merkezi resort test modu aktiftir.
 const START_IN_FOREST_DEV_MODE = false;
 const START_IN_FOURTH_DEV_MODE = true;
-const FOURTH_MAP_BIOME_NAME = 'canyon';
-const FOREST_OBSTACLE_SPAWNING_ENABLED = true;
+const FOURTH_MAP_BIOME_NAME = 'resort';
+const FOREST_OBSTACLE_SPAWNING_ENABLED = false;
 const VILLAGE_OBSTACLE_SPAWNING_ENABLED = false;
 const LAKE_OBSTACLE_SPAWNING_ENABLED = false;
-const CANYON_BROKEN_LANES_ENABLED = true;
+const RUINS_OBSTACLE_SPAWNING_ENABLED = false;
+const CANYON_BROKEN_LANES_ENABLED = false;
+const RAILWAY_TRAIN_SPAWNING_ENABLED = false;
 let isJumping = false;
 const gravity = -0.009;
 let currentTrick = 'NONE';
@@ -706,6 +708,8 @@ let crashMode = 'default';
 let crashPieces = [];
 let crashCountdown = 0;
 let crashImpact = null;
+let canyonFallFx = null;
+let canyonFallFxDebris = [];
 let reviveUsed = false;
 let reviveInvulnFrames = 0;
 let adPlaying = false;
@@ -1412,7 +1416,53 @@ const biome = getBiomeForIndex(index);
 const prevBiome = getBiomeForIndex(Math.max(0, index - 1));
 const isCaveEntrance = biome && biome.name === 'cave' && (!prevBiome || prevBiome.name !== 'cave');
 if (chunk.userData.biomeName === 'cave') setUnifiedCaveEntrance(chunk, isCaveEntrance);
-// (Kanyon güvenli-şerit engelleri kullanıcı isteğiyle kaldırıldı.)
+if (chunk.userData.biomeName === 'canyon') spawnCanyonGapObstacles(chunk);
+}
+
+// Çukur bölümlerinde sadece kanyon temasına uygun, okunaklı buz/kristal engeller koyar.
+// Engeller dünya koordinatında spawn edilir; zemin ve engeller aynı hızda aktığı
+// için çukurla hizalı kalırlar.
+function spawnCanyonGapObstacles(chunk) {
+if (typeof CANYON_BROKEN_LANES_ENABLED !== 'undefined' && !CANYON_BROKEN_LANES_ENABLED) return;
+if (!chunk || !chunk.userData || chunk.userData.canyonPrettyObstaclesSpawned) return;
+chunk.userData.canyonPrettyObstaclesSpawned = true;
+
+const layout = chunk.userData.gapLayout || [];
+for (const seg of layout) {
+const safe = [-1, 0, 1].filter(l => !seg.missing.includes(l));
+if (!safe.length) continue;
+
+const len = Math.max(0, seg.to - seg.from);
+if (len < 52) continue;
+
+// Kanyon boşluklarında eski tahta/şehir engelleri yok.
+// Sadece kanyona uygun buz/kristal engeller geliyor.
+const firstSpot = seg.from + len * 0.42;
+const secondSpot = seg.from + len * 0.72;
+
+// Tek güvenli şerit varsa oyuncuyu boğmayalım: tek, okunaklı engel.
+if (safe.length === 1) {
+const lane = safe[0];
+const type = Math.random() < 0.55 ? 'canyonCrystalArchDuck' : 'canyonFallenIcePillar';
+spawnObstacleAt(type, lane, chunk.position.z - firstSpot);
+
+// Güvenli şeridi gösteren coin çizgisi.
+spawnObstacleAt('coin', lane, chunk.position.z - (seg.from + 16));
+spawnObstacleAt('coin', lane, chunk.position.z - (seg.from + 34));
+spawnObstacleAt('coin', lane, chunk.position.z - (firstSpot + 34));
+} else {
+// İki güvenli şerit varsa birinde engel, diğerinde kaçış koridoru kalır.
+const obstacleLane = safe[Math.floor(Math.random() * safe.length)];
+const openLane = safe.find(l => l !== obstacleLane) ?? obstacleLane;
+spawnObstacleAt('canyonFallenIcePillar', obstacleLane, chunk.position.z - firstSpot);
+spawnObstacleAt('canyonCrystalArchDuck', openLane, chunk.position.z - secondSpot);
+
+// Oyuncuya koridoru anlatan coin yönlendirmesi.
+spawnObstacleAt('coin', openLane, chunk.position.z - (seg.from + 18));
+spawnObstacleAt('coin', openLane, chunk.position.z - (seg.from + 38));
+spawnObstacleAt('coin', openLane, chunk.position.z - (secondSpot + 30));
+}
+}
 }
 
 function createIceCaveChunk(materials) {
@@ -3144,6 +3194,291 @@ scene.add(m);
 return m;
 }
 
+
+
+
+function restorePlayerRootParent() {
+if (skeleton && skeleton.root && player && skeleton.root.parent !== player) {
+  player.attach(skeleton.root);
+}
+if (player) player.position.set(0, 0, 0);
+}
+
+function restoreRobotVisibility() {
+restorePlayerRootParent();
+if (skeleton && skeleton.root) skeleton.root.visible = true;
+if (robotModelRef && robotModelRef.traverse) {
+robotModelRef.traverse(obj => {
+if (obj.material && obj.material.opacity !== undefined) {
+obj.material.opacity = 1;
+obj.material.transparent = false;
+}
+});
+}
+}
+
+function clearCanyonFallFx() {
+if (!canyonFallFx) return;
+if (canyonFallFx.parent) canyonFallFx.parent.remove(canyonFallFx);
+disposeObstacleMesh(canyonFallFx);
+canyonFallFx = null;
+canyonFallFxDebris = [];
+}
+
+function createCanyonFallFx(fallWorldPos) {
+clearCanyonFallFx();
+if (!scene || !fallWorldPos) return;
+
+const group = new THREE.Group();
+group.position.set(fallWorldPos.x, fallWorldPos.y - 0.30, fallWorldPos.z - 0.8);
+group.renderOrder = 900;
+
+// Bu çukur artık player'a bağlı değil; sahnede sabit kalır.
+// Karakter world koordinatında aşağı iner ve bunun içine gerçekten düşer.
+const abyssMat = new THREE.MeshBasicMaterial({
+color: 0x00030a,
+transparent: true,
+opacity: 0.96,
+side: THREE.DoubleSide,
+depthWrite: false
+});
+
+// Uzun dikdörtgen açıklık: şerit boşluğu gibi, yuvarlak sahte delik değil.
+const opening = new THREE.Mesh(new THREE.PlaneGeometry(laneWidth * 0.98, 18.0), abyssMat);
+opening.rotation.x = -Math.PI / 2;
+opening.position.set(0, 0.0, 0);
+opening.userData.isAbyssOpening = true;
+opening.renderOrder = 940;
+group.add(opening);
+
+const wallMat = new THREE.MeshBasicMaterial({
+color: 0x061827,
+transparent: true,
+opacity: 0.72,
+side: THREE.DoubleSide,
+depthWrite: false
+});
+
+// Dünya koordinatında aşağı uzanan kuyu duvarları.
+for (const side of [-1, 1]) {
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(18.0, 120.0), wallMat.clone());
+wall.rotation.y = Math.PI / 2;
+wall.position.set(side * laneWidth * 0.50, -60.0, 0);
+wall.userData.isShaftWall = true;
+wall.userData.side = side;
+wall.renderOrder = 910;
+group.add(wall);
+}
+for (const z of [-9.0, 9.0]) {
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(laneWidth * 1.02, 120.0), wallMat.clone());
+wall.position.set(0, -60.0, z);
+wall.userData.isShaftWall = true;
+wall.renderOrder = 905;
+group.add(wall);
+}
+
+// Derinlik dibi çok aşağıda.
+const bottom = new THREE.Mesh(new THREE.PlaneGeometry(laneWidth * 1.05, 18.0), abyssMat.clone());
+bottom.rotation.x = -Math.PI / 2;
+bottom.position.set(0, -118.0, 0);
+bottom.userData.isAbyssBottom = true;
+bottom.renderOrder = 900;
+group.add(bottom);
+
+const edgeMat = new THREE.MeshPhysicalMaterial({
+color: 0xb8efff,
+roughness: 0.22,
+metalness: 0.08,
+clearcoat: 1.0,
+transparent: true,
+opacity: 0.94,
+emissive: 0x0e7490,
+emissiveIntensity: 0.24
+});
+const darkIceMat = new THREE.MeshStandardMaterial({
+color: 0x1f3546,
+roughness: 0.82,
+metalness: 0.04,
+emissive: 0x082f49,
+emissiveIntensity: 0.12
+});
+const crackMat = new THREE.MeshBasicMaterial({
+color: 0x67e8f9,
+transparent: true,
+opacity: 0.82,
+side: THREE.DoubleSide,
+depthWrite: false
+});
+
+// Kırık buz dudakları açıklığın kenarında sabit kalır.
+for (const side of [-1, 1]) {
+for (let i = 0; i < 16; i++) {
+const z = -8.0 + i * 1.06;
+const edge = new THREE.Mesh(
+new THREE.BoxGeometry(0.68 + Math.random() * 0.46, 0.22, 0.82 + Math.random() * 0.58),
+edgeMat
+);
+edge.position.set(side * laneWidth * 0.49, 0.16 + Math.random() * 0.07, z + (Math.random() - 0.5) * 0.35);
+edge.rotation.y = (Math.random() - 0.5) * 0.55;
+edge.rotation.z = side * (0.06 + Math.random() * 0.15);
+edge.castShadow = true;
+edge.receiveShadow = true;
+edge.userData.isGapEdge = true;
+edge.userData.baseY = edge.position.y;
+edge.userData.side = side;
+edge.userData.seed = Math.random() * 10;
+edge.renderOrder = 960;
+group.add(edge);
+}
+}
+
+// İlk kırılma çatlakları.
+for (let i = 0; i < 14; i++) {
+const crack = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 1.9 + Math.random() * 3.0), crackMat);
+crack.rotation.x = -Math.PI / 2;
+crack.rotation.z = (Math.PI * 2 / 14) * i + (Math.random() - 0.5) * 0.28;
+crack.position.set(
+Math.cos(crack.rotation.z) * (0.6 + Math.random() * 2.4),
+0.23,
+Math.sin(crack.rotation.z) * (0.45 + Math.random() * 2.1)
+);
+crack.userData.isCrack = true;
+crack.renderOrder = 970;
+group.add(crack);
+}
+
+// Buz parçaları sahnede sabit çukurdan fırlar ve kuyuya düşer.
+const shardGeo = new THREE.DodecahedronGeometry(0.34, 0);
+for (let i = 0; i < 52; i++) {
+const shard = new THREE.Mesh(shardGeo.clone(), i % 4 === 0 ? darkIceMat : edgeMat);
+const sideBias = Math.random() < 0.58 ? (Math.random() < 0.5 ? -1 : 1) : 0;
+const x = sideBias ? sideBias * (laneWidth * 0.37 + Math.random() * 1.08) : (Math.random() - 0.5) * laneWidth * 0.65;
+const z = (Math.random() - 0.5) * 10.8;
+shard.position.set(x, 0.35 + Math.random() * 0.48, z);
+const sc = 0.58 + Math.random() * 1.40;
+shard.scale.set(sc * (0.9 + Math.random() * 0.7), sc * 0.30, sc * (0.55 + Math.random() * 0.75));
+shard.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+shard.castShadow = true;
+shard.userData.isDebris = true;
+shard.userData.vx = (Math.random() - 0.5) * 0.105;
+shard.userData.vy = 0.15 + Math.random() * 0.18;
+shard.userData.vz = (Math.random() - 0.5) * 0.085 - 0.02;
+shard.userData.rx = (Math.random() - 0.5) * 0.28;
+shard.userData.ry = (Math.random() - 0.5) * 0.32;
+shard.userData.rz = (Math.random() - 0.5) * 0.28;
+shard.renderOrder = 980;
+canyonFallFxDebris.push(shard);
+group.add(shard);
+}
+
+// Aşağı akan sis/kar.
+const dustCount = 260;
+const dustPos = new Float32Array(dustCount * 3);
+for (let i = 0; i < dustCount; i++) {
+dustPos[i * 3] = (Math.random() - 0.5) * laneWidth * 0.95;
+dustPos[i * 3 + 1] = -Math.random() * 105.0;
+dustPos[i * 3 + 2] = (Math.random() - 0.5) * 16.0;
+}
+const dustGeo = new THREE.BufferGeometry();
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dust = new THREE.Points(
+dustGeo,
+new THREE.PointsMaterial({
+color: 0xdff7ff,
+size: 1.18,
+map: createSoftCloudTexture(),
+transparent: true,
+opacity: 0.78,
+depthWrite: false
+})
+);
+dust.userData.isFallDust = true;
+dust.renderOrder = 990;
+group.add(dust);
+group.userData.dust = dust;
+
+const streakMat = new THREE.MeshBasicMaterial({
+color: 0x93eaff,
+transparent: true,
+opacity: 0.28,
+side: THREE.DoubleSide,
+depthWrite: false
+});
+for (let i = 0; i < 38; i++) {
+const streak = new THREE.Mesh(new THREE.PlaneGeometry(0.10 + Math.random() * 0.08, 8.0 + Math.random() * 16.0), streakMat.clone());
+streak.position.set((Math.random() - 0.5) * laneWidth * 0.86, -4.0 - Math.random() * 110.0, (Math.random() - 0.5) * 16.0);
+streak.rotation.y = (Math.random() - 0.5) * 0.35;
+streak.userData.isFallStreak = true;
+streak.userData.speed = 0.10 + Math.random() * 0.16;
+streak.renderOrder = 995;
+group.add(streak);
+}
+
+canyonFallFx = group;
+scene.add(group);
+}
+
+function updateCanyonFallFx(frame) {
+if (!canyonFallFx) return;
+const t = Math.min(1, frame / 300);
+const crackFade = Math.max(0, 1 - Math.max(0, frame - 22) / 70);
+
+for (const shard of canyonFallFxDebris) {
+const ud = shard.userData;
+shard.position.x += ud.vx;
+shard.position.y += ud.vy;
+shard.position.z += ud.vz;
+ud.vy -= 0.018 + t * 0.020;
+shard.rotation.x += ud.rx;
+shard.rotation.y += ud.ry;
+shard.rotation.z += ud.rz;
+if (frame > 65) {
+const fade = Math.max(0, 1 - (frame - 65) / 165);
+shard.scale.multiplyScalar(0.994);
+shard.visible = fade > 0.035;
+}
+}
+
+canyonFallFx.traverse(obj => {
+if (obj.userData && obj.userData.isGapEdge) {
+const wobble = Math.sin(frame * 0.16 + obj.userData.seed) * 0.030;
+obj.position.y = obj.userData.baseY + wobble - t * 0.13;
+obj.rotation.z += obj.userData.side * 0.0018;
+}
+if (obj.userData && obj.userData.isCrack && obj.material) {
+obj.material.opacity = 0.82 * crackFade;
+}
+if (obj.userData && obj.userData.isShaftWall && obj.material) {
+obj.material.opacity = Math.max(0.38, 0.72 - t * 0.14);
+}
+if (obj.userData && obj.userData.isAbyssOpening && obj.material) {
+obj.material.opacity = Math.min(0.98, 0.78 + t * 0.20);
+}
+if (obj.userData && obj.userData.isFallStreak && obj.material) {
+obj.position.y -= obj.userData.speed * (1 + t * 2.8);
+if (obj.position.y < -118) obj.position.y = -8 - Math.random() * 18;
+obj.material.opacity = Math.max(0.08, 0.28 - t * 0.07);
+}
+});
+
+const dust = canyonFallFx.userData.dust;
+if (dust) {
+const arr = dust.geometry.attributes.position.array;
+for (let i = 0; i < arr.length; i += 3) {
+arr[i] += Math.sin((frame + i) * 0.015) * 0.008;
+arr[i + 1] -= 0.13 + t * 0.22;
+arr[i + 2] += Math.sin((frame + i) * 0.011) * 0.006;
+if (arr[i + 1] < -118) {
+arr[i] = (Math.random() - 0.5) * laneWidth * 0.95;
+arr[i + 1] = -2.0 - Math.random() * 16.0;
+arr[i + 2] = (Math.random() - 0.5) * 16.0;
+}
+}
+dust.geometry.attributes.position.needsUpdate = true;
+if (dust.material) dust.material.opacity = Math.max(0.22, 0.78 - t * 0.22);
+}
+}
+
 function triggerDismemberCrash(reason) {
 if (isCrashed) return;
 
@@ -3156,17 +3491,31 @@ slideTimer = 0;
 velocityY = 0;
 currentTrick = reason || 'CRASH';
 
-showTrickName('BAM!');
-document.getElementById('damage-flash').style.opacity = '0.72';
-setTimeout(() => { document.getElementById('damage-flash').style.opacity = '0'; }, 170);
+const isGapFallCrash = crashMode === 'fallGap';
+const rootWorldStart = new THREE.Vector3();
+if (skeleton && skeleton.root) skeleton.root.getWorldPosition(rootWorldStart);
+showTrickName(isGapFallCrash ? 'FALL!' : 'BAM!');
+const flashEl = document.getElementById('damage-flash');
+if (flashEl) {
+flashEl.style.background = isGapFallCrash ? 'rgba(56, 189, 248, 0.44)' : 'rgba(255, 0, 0, 0.5)';
+flashEl.style.opacity = isGapFallCrash ? '0.48' : '0.72';
+setTimeout(() => { flashEl.style.opacity = '0'; flashEl.style.background = 'rgba(255, 0, 0, 0.5)'; }, 190);
+}
 
 // Sahne ve kamera sabit kalsın, karakter güçlü bir darbe alıp komik şekilde devrilsin.
 if (skeleton.root) skeleton.root.visible = true;
 
 crashImpact = {
 frame: 0,
+startTime: performance.now(),
 startX: playerX,
 startY: Math.max(basePlayerY, playerY),
+startWorldX: rootWorldStart.x,
+startWorldY: rootWorldStart.y,
+startWorldZ: rootWorldStart.z,
+startCamX: camera ? camera.position.x : 0,
+startCamY: camera ? camera.position.y : 12,
+startCamZ: camera ? camera.position.z : 24,
 fallSide: Math.random() > 0.5 ? 1 : -1,
 rootX: skeleton.root ? skeleton.root.rotation.x : 0,
 rootY: skeleton.root ? skeleton.root.rotation.y : 0,
@@ -3185,7 +3534,7 @@ modelScaleY: (robotModelRef && robotModelRef.scale) ? robotModelRef.scale.y : 0.
 mode: crashMode || 'default'
 };
 
-crashCountdown = 118;
+crashCountdown = isGapFallCrash ? 999 : 118;
 }
 
 function updateCrashPieces() {
@@ -3198,6 +3547,7 @@ const cx = crashImpact.startX;
 
 // Kamera sabit; karakter yerinde kalsın ama kök parça biraz yana/alta devrilsin.
 let rootOffsetX = 0;
+let rootOffsetZ = 0;
 let rootY = crashImpact.startY;
 let rootRotX = crashImpact.rootX;
 let rootRotY = crashImpact.rootY;
@@ -3205,7 +3555,9 @@ let rootRotZ = crashImpact.rootZ;
 let boardRotX = crashImpact.boardX;
 let boardRotY = crashImpact.boardY;
 let boardRotZ = crashImpact.boardZ;
+let boardPosX = 0;
 let boardPosY = crashImpact.boardPosY;
+let boardPosZ = 0;
 let torsoRotX = crashImpact.torsoX;
 let torsoRotY = crashImpact.torsoY;
 let torsoRotZ = crashImpact.torsoZ;
@@ -3324,34 +3676,96 @@ rootRotZ += 0.38 * dir;
 torsoRotZ += 0.30 * dir;
 boardRotZ -= 0.28 * dir;
 } else if (mode === 'fallGap') {
-// Kırık kanyon yoluna düştü: karakter boşluğa doğru aşağı aksın.
-const fallT = Math.min(1, f / 70);
-const fallEase = fallT * fallT;
-rootY = crashImpact.startY - fallEase * 8.8;
-rootOffsetX += Math.sin(f * 0.20) * 0.10;
-rootRotX += 1.15 * fallT;
-rootRotZ += 0.50 * dir * fallT;
-boardRotX += 1.25 * fallT;
-boardRotZ -= 0.80 * dir * fallT;
-torsoRotX += 1.05 * fallT;
-torsoRotZ += 0.48 * dir * fallT;
-modelRotX += 0.40 * fallT;
-modelScaleY = Math.max(0.5, modelScaleY - 0.07 * fallT);
+// Bu sürümde karakter player grubunun içinde hileli aşağı çekilmiyor.
+// Root sahneye ayrıldı; dünya koordinatında çukurun içine 5 saniye düşüyor.
+const elapsed = crashImpact.startTime ? (performance.now() - crashImpact.startTime) / 1000 : (f / 60);
+const animFrame = Math.min(300, Math.floor(elapsed * 60));
+const slipT = Math.min(1, elapsed / 0.42);
+const fallT = Math.max(0, Math.min(1, (elapsed - 0.28) / 4.72));
+const fallEase = fallT * fallT * (3 - 2 * fallT);
+const accelFall = (fallT * 0.16) + (fallEase * 0.84);
+const spinT = Math.max(0, Math.min(1, (elapsed - 0.35) / 4.45));
+const shake = Math.sin(elapsed * 18.0) * (1 - Math.min(1, fallT * 1.45));
+
+const worldFallX = crashImpact.startWorldX + Math.sin(elapsed * 9.0) * 0.10 * (1 - fallT);
+const worldFallY = crashImpact.startWorldY + Math.sin(slipT * Math.PI) * 0.18 - (accelFall * 82.0);
+const worldFallZ = crashImpact.startWorldZ - 0.35 * slipT - 2.8 * fallT;
+
+rootOffsetX = 0;
+rootOffsetZ = 0;
+rootY = worldFallY;
+
+rootRotX = crashImpact.rootX - 0.20 * slipT + spinT * Math.PI * 4.4 + shake * 0.08;
+rootRotY = crashImpact.rootY + dir * (0.14 * slipT + spinT * Math.PI * 2.8);
+rootRotZ = crashImpact.rootZ + dir * (0.18 * slipT + spinT * 0.88) + shake * 0.10;
+
+boardPosX = -dir * (0.12 * slipT + 0.55 * fallT);
+boardPosY = crashImpact.boardPosY + 0.22 * slipT - fallEase * 3.4;
+boardPosZ = 0.25 * slipT - 0.88 * fallT;
+boardRotX = crashImpact.boardX + 0.70 * slipT + spinT * Math.PI * 7.6;
+boardRotY = crashImpact.boardY + dir * (0.25 + spinT * Math.PI * 2.8);
+boardRotZ = crashImpact.boardZ - dir * (0.55 + spinT * Math.PI * 3.6);
+
+torsoRotX = crashImpact.torsoX + 0.30 * slipT + spinT * 1.85;
+torsoRotY = crashImpact.torsoY - dir * (0.10 + spinT * 0.82);
+torsoRotZ = crashImpact.torsoZ + dir * (-0.12 + Math.sin(elapsed * 12.0) * 0.16 * spinT);
+torsoPosY = crashImpact.torsoPosY - fallEase * 0.32;
+
+modelRotX = crashImpact.modelRotX + 0.18 * slipT + spinT * 0.82;
+modelRotZ = crashImpact.modelRotZ - dir * (0.08 + spinT * 0.36);
+modelScaleY = crashImpact.modelScaleY;
+
+updateCanyonFallFx(animFrame);
+
+if (skeleton.root) {
+  skeleton.root.visible = elapsed < 5.20;
+  skeleton.root.position.set(worldFallX, worldFallY, worldFallZ);
+  skeleton.root.rotation.x = rootRotX;
+  skeleton.root.rotation.y = rootRotY;
+  skeleton.root.rotation.z = rootRotZ;
+}
+
+// Kamera karakterin gerçek world pozisyonunu takip eder.
+if (camera) {
+const desiredX = worldFallX;
+const desiredY = worldFallY + 8.8;
+const desiredZ = worldFallZ + 15.0 - fallT * 1.8;
+const camLerp = elapsed < 0.35 ? 0.14 : 0.085;
+
+camera.position.x += (desiredX - camera.position.x) * camLerp;
+camera.position.y += (desiredY - camera.position.y) * camLerp;
+camera.position.z += (desiredZ - camera.position.z) * camLerp;
+camera.fov += ((80 + fallT * 7.0) - camera.fov) * 0.045;
+camera.updateProjectionMatrix();
+
+const camShake = Math.max(0, 0.13 - elapsed * 0.020);
+camera.lookAt(
+worldFallX + (Math.random() - 0.5) * camShake,
+worldFallY + 0.4,
+worldFallZ - 3.0
+);
+}
+
+// Final alttaki genel assignment bu modda tekrar çalışmasın diye değerleri dışarıya yazıyoruz.
+playerX = cx;
+playerY = basePlayerY;
 }
 
 playerX = cx;
+if (mode !== 'fallGap') {
 playerY = rootY;
 if (skeleton.root) {
-skeleton.root.position.set(cx + rootOffsetX, rootY, 0);
+skeleton.root.position.set(cx + rootOffsetX, rootY, rootOffsetZ);
 skeleton.root.rotation.x = rootRotX;
 skeleton.root.rotation.y = rootRotY;
 skeleton.root.rotation.z = rootRotZ;
+}
 }
 if (skeleton.board) {
 skeleton.board.rotation.x = boardRotX;
 skeleton.board.rotation.y = boardRotY;
 skeleton.board.rotation.z = boardRotZ;
-skeleton.board.position.y = boardPosY;
+skeleton.board.position.set(boardPosX, boardPosY, boardPosZ);
 }
 if (skeleton.torso) {
 skeleton.torso.rotation.x = torsoRotX;
@@ -3366,10 +3780,20 @@ robotModelRef.scale.y = modelScaleY;
 }
 
 if (crashCountdown > 0) {
+const isGapFallMode = crashImpact && crashImpact.mode === 'fallGap';
+if (isGapFallMode) {
+const elapsedMs = crashImpact.startTime ? (performance.now() - crashImpact.startTime) : (crashImpact.frame * 16.67);
+if (elapsedMs >= 5350) {
+crashCountdown = 0;
+crashImpact = null;
+endGame();
+}
+} else {
 crashCountdown--;
 if (crashCountdown === 0) {
 crashImpact = null;
 endGame();
+}
 }
 }
 }
@@ -3394,6 +3818,8 @@ document.getElementById('game-over-panel').style.display = 'block';
 
 
 function resetPlayerPoseAfterRevive() {
+  clearCanyonFallFx();
+  restoreRobotVisibility();
   if (skeleton.root) {
     skeleton.root.visible = true;
     skeleton.root.position.set(playerX, basePlayerY, 0);
@@ -4178,7 +4604,142 @@ return group;
 }
 
 
+function createRuinsBrokenColumnJump() {
+const group = new THREE.Group();
+const stoneMat = new THREE.MeshStandardMaterial({ color: 0xb9a888, roughness: 0.94 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x8c7d63, roughness: 0.96 });
+const snowMat = new THREE.MeshStandardMaterial({ color: 0xeef4fb, roughness: 0.82 });
 
+for (const x of [-1.55, 1.55]) {
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.7, 1.6), darkMat);
+  base.position.set(x, 0.35, 0);
+  base.castShadow = true; base.receiveShadow = true;
+  group.add(base);
+}
+
+const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.98, 7.4, 16), stoneMat);
+drum.rotation.z = Math.PI / 2;
+drum.position.set(0, 1.38, 0);
+drum.castShadow = true; drum.receiveShadow = true;
+group.add(drum);
+
+for (let i = 0; i < 5; i++) {
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.94, 0.05, 8, 16), darkMat);
+  ring.rotation.y = Math.PI / 2;
+  ring.position.set(-2.6 + i * 1.3, 1.38, 0);
+  group.add(ring);
+}
+
+const brokenCap = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 1.6), stoneMat);
+brokenCap.position.set(2.55, 1.82, 0.12);
+brokenCap.rotation.set(0.18, 0.24, 0.2);
+brokenCap.castShadow = true;
+group.add(brokenCap);
+
+const snow = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.12, 1.2), snowMat);
+snow.position.set(0, 2.02, 0);
+group.add(snow);
+
+return group;
+}
+
+function createRuinsLowArchDuck() {
+const group = new THREE.Group();
+const stoneMat = new THREE.MeshStandardMaterial({ color: 0xb9a888, roughness: 0.94 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x8c7d63, roughness: 0.96 });
+const snowMat = new THREE.MeshStandardMaterial({ color: 0xeef4fb, roughness: 0.82 });
+const goldMat = new THREE.MeshStandardMaterial({ color: 0xcaa24a, metalness: 0.55, roughness: 0.42 });
+const bannerMat = new THREE.MeshStandardMaterial({ color: 0x8a2f2f, roughness: 0.8, side: THREE.DoubleSide });
+
+for (const x of [-1.42, 1.42]) {
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.9), darkMat);
+  base.position.set(x, 0.45, 0);
+  base.castShadow = true; base.receiveShadow = true;
+  group.add(base);
+
+  const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.15, 4.7, 1.15), stoneMat);
+  pillar.position.set(x, 2.95, 0);
+  pillar.castShadow = true; pillar.receiveShadow = true;
+  group.add(pillar);
+
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.35, 1.45), goldMat);
+  trim.position.set(x, 5.45, 0);
+  group.add(trim);
+}
+
+const lintel = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.0, 1.5), darkMat);
+lintel.position.set(0, 5.35, 0);
+lintel.castShadow = true; lintel.receiveShadow = true;
+group.add(lintel);
+
+const snow = new THREE.Mesh(new THREE.BoxGeometry(4.75, 0.12, 1.62), snowMat);
+snow.position.set(0, 5.95, 0);
+group.add(snow);
+
+const emblem = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.75, 0.18), goldMat);
+emblem.position.set(0, 5.25, 0.84);
+group.add(emblem);
+
+for (const x of [-0.9, 0.9]) {
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 1.85), bannerMat);
+  banner.position.set(x, 4.15, 0.82);
+  group.add(banner);
+}
+
+return group;
+}
+
+function createRuinsStatueBlock() {
+const group = new THREE.Group();
+const stoneMat = new THREE.MeshStandardMaterial({ color: 0xb9a888, roughness: 0.94 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x8c7d63, roughness: 0.96 });
+const goldMat = new THREE.MeshStandardMaterial({ color: 0xcaa24a, metalness: 0.55, roughness: 0.42, emissive: 0x3a2c0c, emissiveIntensity: 0.25 });
+const snowMat = new THREE.MeshStandardMaterial({ color: 0xeef4fb, roughness: 0.82 });
+
+const base = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.3, 4.0), darkMat);
+base.position.y = 0.65;
+base.castShadow = true; base.receiveShadow = true;
+group.add(base);
+
+const feet = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.7, 1.8), stoneMat);
+feet.position.set(0, 1.65, 0);
+feet.castShadow = true;
+group.add(feet);
+
+const robe = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 2.15, 5.1, 10), stoneMat);
+robe.position.set(0, 4.45, 0);
+robe.castShadow = true; robe.receiveShadow = true;
+group.add(robe);
+
+const chest = new THREE.Mesh(new THREE.BoxGeometry(2.85, 1.9, 1.9), stoneMat);
+chest.position.set(0, 6.95, 0);
+chest.castShadow = true;
+group.add(chest);
+
+const head = new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.75, 1.3), stoneMat);
+head.position.set(0, 8.8, 0);
+head.castShadow = true;
+group.add(head);
+
+const crown = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.25, 4), goldMat);
+crown.position.set(0, 10.35, 0);
+crown.rotation.y = Math.PI / 4;
+group.add(crown);
+
+for (const sx of [-1, 1]) {
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.54, 3.5, 8), stoneMat);
+  arm.position.set(sx * 1.95, 5.95, 0.25);
+  arm.rotation.x = 0.52;
+  arm.castShadow = true;
+  group.add(arm);
+}
+
+const snow = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.12, 1.8), snowMat);
+snow.position.set(0, 7.95, 0);
+group.add(snow);
+
+return group;
+}
 
 function getScoreBreakdown() {
 const distanceScore = Math.floor(distance);
@@ -4237,7 +4798,13 @@ villageFenceJump: { kind: 'jump', x: 3.75, z: 3.05, top: 2.3, passY: 1.86, clear
 villageLowBanner: { kind: 'duck', x: 3.65, z: 3.55, top: 6.15, passY: 0.0, clear: 'BANNER CLEAR!', crash: 'LOW BANNER CRASH' },
 villageBarrel: { kind: 'side', x: 5.85, z: 4.35, top: 9.2, rampClearTop: 5.35, passY: 0.0, clear: 'BARREL DODGE!', crash: 'BARREL CRASH' },
 villageSnowman: { kind: 'side', x: 5.95, z: 4.45, top: 9.5, rampClearTop: 5.7, passY: 0.0, clear: 'SNOWMAN DODGE!', crash: 'SNOWMAN CRASH' },
-lakeIceRamp: { kind: 'ramp', x: 3.35, z: 3.2, top: 3.2, passY: 0.0, clear: 'ICE RAMP!', crash: 'ICE RAMP' }
+lakeIceRamp: { kind: 'ramp', x: 3.35, z: 3.2, top: 3.2, passY: 0.0, clear: 'ICE RAMP!', crash: 'ICE RAMP' },
+canyonFallenIcePillar: { kind: 'jump', x: 3.35, z: 3.25, top: 2.35, passY: 1.92, clear: 'ICE PILLAR JUMP!', crash: 'ICE PILLAR CRASH' },
+canyonCrystalArchDuck: { kind: 'duck', x: 3.45, z: 3.55, top: 5.85, passY: 0.0, clear: 'CRYSTAL SLIDE!', crash: 'CRYSTAL ARCH CRASH' },
+ruinsBrokenColumnJump: { kind: 'jump', x: 3.45, z: 3.20, top: 2.08, passY: 1.82, clear: 'COLUMN JUMP!', crash: 'BROKEN COLUMN CRASH' },
+ruinsLowArchDuck: { kind: 'duck', x: 3.55, z: 3.55, top: 6.05, passY: 0.0, clear: 'ARCH CLEAR!', crash: 'STONE ARCH CRASH' },
+ruinsStatueBlock: { kind: 'side', x: 4.95, z: 4.10, top: 10.6, passY: 0.0, clear: 'STATUE DODGE!', crash: 'STATUE CRASH' },
+railwayOncomingTrain: { kind: 'side', x: 5.45, z: 16.0, top: 12.5, passY: 0.0, clear: 'TRAIN DODGE!', crash: 'TRAIN CRASH' }
 };
 return specs[type] || { kind: 'other', x: 2.8, z: 2.8, top: 3.0, passY: 0, clear: 'CLEAR!', crash: 'CRASH' };
 }
@@ -4702,6 +5269,358 @@ for (const x of [-1.65, 0, 1.65]) {
 return group;
 }
 
+
+function createCanyonFallenIcePillar() {
+const group = new THREE.Group();
+const iceMat = new THREE.MeshPhysicalMaterial({
+color: 0x94e8ff,
+metalness: 0.12,
+roughness: 0.18,
+clearcoat: 1.0,
+transparent: true,
+opacity: 0.86,
+emissive: 0x0e7490,
+emissiveIntensity: 0.22
+});
+const rockMat = new THREE.MeshStandardMaterial({ color: 0x37465a, roughness: 0.94, metalness: 0.03 });
+const darkIceMat = new THREE.MeshStandardMaterial({ color: 0x28526b, roughness: 0.38, metalness: 0.08, emissive: 0x083344, emissiveIntensity: 0.18 });
+
+// Düşmüş buz sütunu: zıplama engeli.
+const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.95, 6.8, 12), iceMat);
+pillar.rotation.z = Math.PI / 2;
+pillar.rotation.y = 0.12;
+pillar.position.set(0, 1.18, 0);
+pillar.castShadow = true;
+pillar.receiveShadow = true;
+group.add(pillar);
+
+// Uçlarda kırık kaya/buz parçaları.
+for (const x of [-3.05, 3.05]) {
+const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.72, 0), rockMat);
+rock.position.set(x, 0.58, 0.08);
+rock.scale.set(1.35, 0.72, 0.95);
+rock.rotation.set(Math.random() * 0.35, Math.random() * Math.PI, Math.random() * 0.2);
+rock.castShadow = true;
+group.add(rock);
+
+const shard = new THREE.Mesh(new THREE.ConeGeometry(0.32, 1.45, 6), darkIceMat);
+shard.position.set(x * 0.86, 1.55, -0.55);
+shard.rotation.set(0.45, 0, x > 0 ? -0.8 : 0.8);
+shard.castShadow = true;
+group.add(shard);
+}
+
+// Üstte ince kar kapağı.
+const snowCap = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.12, 0.42), matSnow);
+snowCap.position.set(0, 1.82, 0.05);
+snowCap.rotation.z = 0.02;
+snowCap.castShadow = true;
+group.add(snowCap);
+
+return group;
+}
+
+function createCanyonCrystalArchDuck() {
+const group = new THREE.Group();
+const iceMat = new THREE.MeshPhysicalMaterial({
+color: 0x9beafe,
+metalness: 0.1,
+roughness: 0.16,
+clearcoat: 1.0,
+transparent: true,
+opacity: 0.84,
+emissive: 0x0891b2,
+emissiveIntensity: 0.34
+});
+const coreMat = new THREE.MeshStandardMaterial({ color: 0x2d455b, roughness: 0.82, metalness: 0.06 });
+const glowMat = new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.42, side: THREE.DoubleSide });
+
+// İki yan buz ayağı.
+for (const x of [-2.85, 2.85]) {
+const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.72, 5.35, 8), iceMat);
+pillar.position.set(x, 2.68, 0);
+pillar.rotation.z = x < 0 ? -0.06 : 0.06;
+pillar.castShadow = true;
+group.add(pillar);
+
+const base = new THREE.Mesh(new THREE.DodecahedronGeometry(0.85, 0), coreMat);
+base.position.set(x, 0.42, 0.05);
+base.scale.set(1.15, 0.52, 0.9);
+base.castShadow = true;
+group.add(base);
+}
+
+// Alçak kristal kemer: altından eğilerek geçilir.
+const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.52, 6.35, 10), iceMat);
+beam.rotation.z = Math.PI / 2;
+beam.position.set(0, 4.95, 0);
+beam.castShadow = true;
+group.add(beam);
+
+// Sarkıtlar, oyuncuya "eğil" mesajını net verir.
+for (let i = 0; i < 5; i++) {
+const x = -2.05 + i * 1.02;
+const spike = new THREE.Mesh(new THREE.ConeGeometry(0.22 + (i % 2) * 0.06, 1.55 + (i % 3) * 0.22, 6), iceMat);
+spike.position.set(x, 4.05 - (i % 2) * 0.18, 0.05);
+spike.rotation.x = Math.PI;
+spike.castShadow = true;
+group.add(spike);
+}
+
+// Hafif mavi parıltı perdesi: taş/tahta değil, buz mağarası hissi verir.
+const glow = new THREE.Mesh(new THREE.PlaneGeometry(5.7, 2.1), glowMat);
+glow.position.set(0, 4.1, -0.12);
+group.add(glow);
+
+return group;
+}
+
+
+
+function createRailwayOncomingTrain() {
+const group = new THREE.Group();
+
+// Daha da gerçekçi banliyö / dağ hattı EMU tren görünümü.
+const bodyRed = new THREE.MeshStandardMaterial({ color: 0x9b1717, roughness: 0.36, metalness: 0.24 });
+const bodyLight = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.30, metalness: 0.14 });
+const stripeMat = new THREE.MeshStandardMaterial({ color: 0x1b2430, roughness: 0.44, metalness: 0.26 });
+const accentMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.24, metalness: 0.30 });
+const roofMat = new THREE.MeshStandardMaterial({ color: 0x566273, roughness: 0.52, metalness: 0.36 });
+const metalMat = new THREE.MeshStandardMaterial({ color: 0x8793a1, roughness: 0.28, metalness: 0.88 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x0b1018, roughness: 0.76, metalness: 0.32 });
+const glassMat = new THREE.MeshPhysicalMaterial({
+color: 0xc8f5ff,
+roughness: 0.08,
+metalness: 0.03,
+clearcoat: 1.0,
+transparent: true,
+opacity: 0.86,
+emissive: 0x0ea5b7,
+emissiveIntensity: 0.10
+});
+const lightMat = new THREE.MeshBasicMaterial({ color: 0xfff1a8 });
+const beamMat = new THREE.MeshBasicMaterial({
+color: 0xfff1a8,
+transparent: true,
+opacity: 0.22,
+side: THREE.DoubleSide,
+depthWrite: false
+});
+
+const len = 33.5;
+
+const under = new THREE.Mesh(new THREE.BoxGeometry(6.08, 0.82, len + 1.0), darkMat);
+under.position.set(0, 0.82, 0);
+under.castShadow = true;
+under.receiveShadow = true;
+group.add(under);
+
+const bodyLower = new THREE.Mesh(new THREE.BoxGeometry(5.82, 2.62, len), bodyLight);
+bodyLower.position.set(0, 2.15, 0);
+bodyLower.castShadow = true;
+bodyLower.receiveShadow = true;
+group.add(bodyLower);
+
+const bodyUpper = new THREE.Mesh(new THREE.BoxGeometry(5.42, 1.88, len - 0.4), bodyRed);
+bodyUpper.position.set(0, 4.18, 0);
+bodyUpper.castShadow = true;
+group.add(bodyUpper);
+
+const shoulderBand = new THREE.Mesh(new THREE.BoxGeometry(5.54, 0.24, len - 0.2), accentMat);
+shoulderBand.position.set(0, 4.96, 0);
+group.add(shoulderBand);
+const stripe = new THREE.Mesh(new THREE.BoxGeometry(5.62, 0.40, len - 0.1), stripeMat);
+stripe.position.set(0, 3.16, 0);
+group.add(stripe);
+
+const roof = new THREE.Mesh(new THREE.BoxGeometry(5.16, 0.54, len - 0.4), roofMat);
+roof.position.set(0, 5.26, -0.02);
+roof.castShadow = true;
+group.add(roof);
+
+for (const z of [-9.5, -1.2, 7.6]) {
+  const hvac = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.30, 3.2), metalMat);
+  hvac.position.set(0, 5.72, z);
+  hvac.castShadow = true;
+  group.add(hvac);
+}
+
+const frontCore = new THREE.Mesh(new THREE.BoxGeometry(5.92, 4.92, 1.18), bodyRed);
+frontCore.position.set(0, 2.90, len * 0.5 - 0.26);
+frontCore.castShadow = true;
+group.add(frontCore);
+
+const frontTopLip = new THREE.Mesh(new THREE.BoxGeometry(5.18, 0.44, 0.95), accentMat);
+frontTopLip.position.set(0, 4.86, len * 0.5 - 0.12);
+group.add(frontTopLip);
+
+const windshieldFrame = new THREE.Mesh(new THREE.BoxGeometry(4.72, 1.85, 0.18), darkMat);
+windshieldFrame.position.set(0, 3.92, len * 0.5 + 0.42);
+windshieldFrame.rotation.x = -0.18;
+group.add(windshieldFrame);
+
+for (const x of [-1.08, 1.08]) {
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(1.72, 1.30, 0.08), glassMat);
+  glass.position.set(x, 3.92, len * 0.5 + 0.50);
+  glass.rotation.x = -0.18;
+  group.add(glass);
+
+  const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.82, 0.05), darkMat);
+  wiper.position.set(x * 0.92, 3.56, len * 0.5 + 0.58);
+  wiper.rotation.z = x < 0 ? -0.34 : 0.34;
+  group.add(wiper);
+}
+
+for (const x of [-2.56, 2.56]) {
+  const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.74, 2.55, 1.85), bodyRed);
+  shoulder.position.set(x, 2.56, len * 0.5 - 0.25);
+  shoulder.rotation.y = x < 0 ? -0.42 : 0.42;
+  shoulder.castShadow = true;
+  group.add(shoulder);
+}
+
+const frontApron = new THREE.Mesh(new THREE.BoxGeometry(5.72, 1.16, 0.52), darkMat);
+frontApron.position.set(0, 0.92, len * 0.5 + 0.28);
+group.add(frontApron);
+const plow = new THREE.Mesh(new THREE.BoxGeometry(4.88, 0.42, 0.70), metalMat);
+plow.position.set(0, 0.38, len * 0.5 + 0.82);
+plow.rotation.x = -0.20;
+group.add(plow);
+
+const headlights = [];
+for (const x of [-1.74, 1.74]) {
+  const lampHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.12, 18), metalMat);
+  lampHousing.rotation.x = Math.PI / 2;
+  lampHousing.position.set(x, 2.08, len * 0.5 + 0.60);
+  group.add(lampHousing);
+
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12), lightMat);
+  lamp.position.set(x, 2.08, len * 0.5 + 0.66);
+  lamp.userData.isTrainLamp = true;
+  group.add(lamp);
+  headlights.push(lamp);
+
+  const beam = new THREE.Mesh(new THREE.ConeGeometry(1.20, 12.8, 18, 1, true), beamMat.clone());
+  beam.rotation.x = Math.PI / 2;
+  beam.position.set(x, 2.02, len * 0.5 + 6.3);
+  beam.userData.isTrainBeam = true;
+  group.add(beam);
+
+  const marker = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff6b6b }));
+  marker.position.set(x * 0.92, 1.36, len * 0.5 + 0.64);
+  group.add(marker);
+}
+
+for (const x of [-1.05, 1.05]) {
+  const buffer = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.46, 16), metalMat);
+  buffer.rotation.z = Math.PI / 2;
+  buffer.position.set(x, 0.96, len * 0.5 + 0.70);
+  group.add(buffer);
+}
+const coupler = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.30, 0.86), metalMat);
+coupler.position.set(0, 0.72, len * 0.5 + 0.86);
+group.add(coupler);
+
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 8; i++) {
+    const win = new THREE.Mesh(new THREE.BoxGeometry(0.10, 1.10, 1.48), glassMat);
+    win.position.set(side * 2.86, 3.50, -12.2 + i * 3.16);
+    group.add(win);
+  }
+}
+
+for (const side of [-1, 1]) {
+  for (const z of [-8.0, 1.4, 10.8]) {
+    const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.56, 1.82), darkMat);
+    doorFrame.position.set(side * 2.93, 2.56, z);
+    group.add(doorFrame);
+
+    const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 2.36, 1.60), bodyLight);
+    doorPanel.position.set(side * 2.98, 2.56, z);
+    group.add(doorPanel);
+
+    const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.82, 0.60), glassMat);
+    doorGlass.position.set(side * 3.02, 3.08, z);
+    group.add(doorGlass);
+  }
+}
+
+for (const side of [-1, 1]) {
+  const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.70, len - 1.0), darkMat);
+  skirt.position.set(side * 2.78, 0.96, 0);
+  group.add(skirt);
+}
+
+const wheels = [];
+const wheelGeo = new THREE.CylinderGeometry(0.66, 0.66, 0.46, 18);
+for (const side of [-1, 1]) {
+  for (const z of [-11.7, -8.4, 8.4, 11.7]) {
+    const wheel = new THREE.Mesh(wheelGeo, darkMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(side * 2.34, 0.42, z);
+    wheel.castShadow = true;
+    group.add(wheel);
+    wheels.push(wheel);
+  }
+}
+
+for (const z of [-10.0, 10.0]) {
+  const bogie = new THREE.Mesh(new THREE.BoxGeometry(5.04, 0.48, 4.88), darkMat);
+  bogie.position.set(0, 0.74, z);
+  bogie.castShadow = true;
+  group.add(bogie);
+
+  const axle = new THREE.Mesh(new THREE.BoxGeometry(4.88, 0.18, 0.18), metalMat);
+  axle.position.set(0, 0.42, z);
+  group.add(axle);
+
+  const springBox = new THREE.Mesh(new THREE.BoxGeometry(4.28, 0.28, 1.10), metalMat);
+  springBox.position.set(0, 1.02, z);
+  group.add(springBox);
+}
+
+const pantograph = new THREE.Group();
+const pBase = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.14, 1.0), metalMat);
+pBase.position.y = 5.96;
+pantograph.add(pBase);
+for (const x of [-0.62, 0.62]) {
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.10, 2.30, 0.10), metalMat);
+  arm.position.set(x, 6.90, 0);
+  arm.rotation.z = x < 0 ? -0.42 : 0.42;
+  pantograph.add(arm);
+}
+const pTop = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.10, 0.12), metalMat);
+pTop.position.y = 8.02;
+pantograph.add(pTop);
+pantograph.position.z = -3.8;
+group.add(pantograph);
+
+const smokeGeo = new THREE.BufferGeometry();
+const smokeCount = 48;
+const arr = new Float32Array(smokeCount * 3);
+for (let i = 0; i < smokeCount; i++) {
+  arr[i * 3] = (Math.random() - 0.5) * 4.5;
+  arr[i * 3 + 1] = 4.8 + Math.random() * 2.6;
+  arr[i * 3 + 2] = -len * 0.5 - Math.random() * 10.5;
+}
+smokeGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+const smoke = new THREE.Points(smokeGeo, new THREE.PointsMaterial({
+  color: 0xdff7ff,
+  size: 1.14,
+  map: createSoftCloudTexture(),
+  transparent: true,
+  opacity: 0.24,
+  depthWrite: false
+}));
+smoke.userData.isTrainSmoke = true;
+group.add(smoke);
+
+group.userData.wheels = wheels;
+group.userData.headlights = headlights;
+group.userData.len = len;
+return group;
+}
+
 function createObstacleGroup(type) {
 
 let objGroup = new THREE.Group();
@@ -4815,6 +5734,24 @@ hitY = 9.5;
 } else if (type === 'lakeIceRamp') {
 objGroup = createLakeIceRamp();
 hitY = 3.2;
+} else if (type === 'canyonFallenIcePillar') {
+objGroup = createCanyonFallenIcePillar();
+hitY = 2.35;
+} else if (type === 'canyonCrystalArchDuck') {
+objGroup = createCanyonCrystalArchDuck();
+hitY = 5.2;
+} else if (type === 'ruinsBrokenColumnJump') {
+objGroup = createRuinsBrokenColumnJump();
+hitY = 2.08;
+} else if (type === 'ruinsLowArchDuck') {
+objGroup = createRuinsLowArchDuck();
+hitY = 5.3;
+} else if (type === 'ruinsStatueBlock') {
+objGroup = createRuinsStatueBlock();
+hitY = 10.6;
+} else if (type === 'railwayOncomingTrain') {
+objGroup = createRailwayOncomingTrain();
+hitY = 12.5;
 }
 
 return { objGroup, hitY };
@@ -5342,6 +6279,135 @@ lastComboPattern = index;
 return patterns[index];
 }
 
+
+function buildRuinsPattern() {
+const openLane = randomLane();
+const closed = [-1, 0, 1].filter(lane => lane !== openLane);
+const jumpLane = randomLane();
+const duckLane = randomLane();
+const blockedLane = randomLane();
+const safeLane = otherLane(blockedLane);
+const secondBlocked = [-1, 0, 1].find(lane => lane !== blockedLane && lane !== safeLane) ?? otherLane(safeLane);
+const slalomFirst = randomLane();
+const slalomSecond = [-1, 0, 1].find(lane => lane !== slalomFirst && lane !== otherLane(slalomFirst)) ?? otherLane(slalomFirst);
+const patterns = [
+// İki dev heykel şeridi kapatır, tek açık koridor kalır.
+[
+{ type: 'coin', lane: openLane, z: -302 },
+{ type: 'coin', lane: openLane, z: -322 },
+{ type: 'ruinsStatueBlock', lane: closed[0], z: -350 },
+{ type: 'ruinsStatueBlock', lane: closed[1], z: -350 },
+{ type: 'coin', lane: openLane, z: -382 },
+{ type: 'coin', lane: openLane, z: -400 }
+],
+// Yıkık sütun üstünden atlama.
+[
+{ type: 'coin', lane: jumpLane, z: -304 },
+{ type: 'coin', lane: jumpLane, z: -324 },
+{ type: 'ruinsBrokenColumnJump', lane: jumpLane, z: -350 },
+{ type: 'coin', lane: jumpLane, z: -384 },
+{ type: 'coin', lane: jumpLane, z: -402 }
+],
+// Alçak taş kemerden eğilerek geçme.
+[
+{ type: 'coin', lane: duckLane, z: -304 },
+{ type: 'coin', lane: duckLane, z: -324 },
+{ type: 'ruinsLowArchDuck', lane: duckLane, z: -350 },
+{ type: 'coin', lane: duckLane, z: -384 },
+{ type: 'coin', lane: duckLane, z: -402 }
+],
+// Önce yana kaç, sonra sütundan atla.
+[
+{ type: 'ruinsStatueBlock', lane: blockedLane, z: -350 },
+{ type: 'coin', lane: safeLane, z: -380 },
+{ type: 'coin', lane: safeLane, z: -398 },
+{ type: 'ruinsBrokenColumnJump', lane: safeLane, z: -458 },
+{ type: 'coin', lane: safeLane, z: -492 }
+],
+// Önce yana kaç, sonra alçak kemerden geç.
+[
+{ type: 'ruinsStatueBlock', lane: blockedLane, z: -350 },
+{ type: 'coin', lane: safeLane, z: -380 },
+{ type: 'coin', lane: safeLane, z: -398 },
+{ type: 'ruinsLowArchDuck', lane: safeLane, z: -456 },
+{ type: 'coin', lane: safeLane, z: -490 }
+],
+// Antik slalom: heykeller arası sağ-sol geçiş.
+[
+{ type: 'ruinsStatueBlock', lane: slalomFirst, z: -350 },
+{ type: 'coin', lane: 0, z: -382 },
+{ type: 'ruinsStatueBlock', lane: 0, z: -454 },
+{ type: 'coin', lane: slalomSecond, z: -488 },
+{ type: 'ruinsStatueBlock', lane: slalomSecond, z: -560 }
+],
+// Bir taraf blok, sonra diğer tarafta tekrar blok: mantıklı büyük kaçış.
+[
+{ type: 'ruinsStatueBlock', lane: blockedLane, z: -350 },
+{ type: 'coin', lane: safeLane, z: -382 },
+{ type: 'ruinsStatueBlock', lane: safeLane, z: -456 },
+{ type: 'coin', lane: secondBlocked, z: -490 },
+{ type: 'ruinsStatueBlock', lane: secondBlocked, z: -562 }
+]
+];
+let index = Math.floor(Math.random() * patterns.length);
+if (index === lastComboPattern) index = (index + 1) % patterns.length;
+lastComboPattern = index;
+return patterns[index];
+}
+
+function buildRailwayPattern() {
+const openLane = randomLane();
+const closed = [-1, 0, 1].filter(lane => lane !== openLane);
+const singleLane = randomLane();
+const sideSafe = otherLane(singleLane);
+const thirdLane = [-1, 0, 1].find(lane => lane !== singleLane && lane !== sideSafe) ?? 0;
+
+const patterns = [
+// Tek tren: oyuncu güvenli şeride kaçsın.
+[
+{ type: 'coin', lane: sideSafe, z: -318 },
+{ type: 'coin', lane: sideSafe, z: -340 },
+{ type: 'railwayOncomingTrain', lane: singleLane, z: -430 },
+{ type: 'coin', lane: sideSafe, z: -392 },
+{ type: 'coin', lane: sideSafe, z: -414 }
+],
+// İki tren aynı anda: Subway Surfers gibi tek koridor açık.
+[
+{ type: 'coin', lane: openLane, z: -318 },
+{ type: 'coin', lane: openLane, z: -340 },
+{ type: 'railwayOncomingTrain', lane: closed[0], z: -438 },
+{ type: 'railwayOncomingTrain', lane: closed[1], z: -452 },
+{ type: 'coin', lane: openLane, z: -392 },
+{ type: 'coin', lane: openLane, z: -414 },
+{ type: 'coin', lane: openLane, z: -436 }
+],
+// Önce tek tren, sonra karşı şeritte ikinci tren: sağ-sol karar verdirtir.
+[
+{ type: 'railwayOncomingTrain', lane: singleLane, z: -420 },
+{ type: 'coin', lane: sideSafe, z: -374 },
+{ type: 'coin', lane: sideSafe, z: -396 },
+{ type: 'railwayOncomingTrain', lane: thirdLane, z: -565 },
+{ type: 'coin', lane: sideSafe, z: -522 },
+{ type: 'coin', lane: sideSafe, z: -544 }
+],
+// Orta hat kapalıysa kenara kaç; kenar kapalıysa ortaya kaç.
+[
+{ type: 'railwayOncomingTrain', lane: 0, z: -430 },
+{ type: 'coin', lane: -1, z: -380 },
+{ type: 'coin', lane: -1, z: -402 },
+{ type: 'railwayOncomingTrain', lane: 1, z: -570 },
+{ type: 'coin', lane: -1, z: -520 },
+{ type: 'coin', lane: -1, z: -542 }
+]
+];
+
+let index = Math.floor(Math.random() * patterns.length);
+if (index === lastComboPattern) index = (index + 1) % patterns.length;
+lastComboPattern = index;
+return patterns[index];
+}
+
+
 function buildSinglePattern() {
 const type = chooseSingleType();
 const lane = randomLane();
@@ -5393,7 +6459,9 @@ const caveOnlySpawning = CAVE_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'cave';
 const forestOnlySpawning = FOREST_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'forest';
 const villageOnlySpawning = VILLAGE_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'village';
 const lakeOnlySpawning = LAKE_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'lake';
-if (!AUTO_OBSTACLE_SPAWNING_ENABLED && !caveOnlySpawning && !forestOnlySpawning && !villageOnlySpawning && !lakeOnlySpawning) return;
+const ruinsOnlySpawning = RUINS_OBSTACLE_SPAWNING_ENABLED && mapPhase === 'ruins';
+const railwayOnlySpawning = RAILWAY_TRAIN_SPAWNING_ENABLED && mapPhase === 'railway';
+if (!AUTO_OBSTACLE_SPAWNING_ENABLED && !caveOnlySpawning && !forestOnlySpawning && !villageOnlySpawning && !lakeOnlySpawning && !ruinsOnlySpawning && !railwayOnlySpawning) return;
 if (!isPlaying || isCrashed) return;
 if (coursePortal && coursePortal.position.z >= -240) return;
 
@@ -5406,9 +6474,9 @@ const tier = getDifficultyTier();
 // Hız arttıkça boşluk otomatik azalır ama minimum güvenli boşluk korunur.
 const spawnGapByTier = [118, 100, 84, 72, 62];
 const speedPressure = Math.min(22, Math.max(0, (speed - baseSpeed) * 18));
-const spawnGap = mapPhase === 'cliff' || mapPhase === 'forest' || mapPhase === 'village' || mapPhase === 'lake'
+const spawnGap = mapPhase === 'cliff' || mapPhase === 'forest' || mapPhase === 'village' || mapPhase === 'lake' || mapPhase === 'ruins' || mapPhase === 'railway'
   ? Math.max(
-      mapPhase === 'forest' ? 118 : (mapPhase === 'village' ? 112 : (mapPhase === 'lake' ? 116 : 92)),
+      mapPhase === 'forest' ? 118 : (mapPhase === 'village' ? 112 : (mapPhase === 'lake' ? 116 : (mapPhase === 'ruins' ? 118 : (mapPhase === 'railway' ? 152 : 92)))),
       spawnGapByTier[tier] - speedPressure
     )
   : Math.max(56, spawnGapByTier[tier] - speedPressure);
@@ -5425,7 +6493,11 @@ const pattern = mapPhase === 'cave'
       ? buildVillagePattern()
       : (mapPhase === 'lake'
         ? buildLakePattern()
-        : (mapPhase === 'cliff' ? buildCliffPattern() : (useCombo ? buildComboPattern() : buildSinglePattern())))));
+        : (mapPhase === 'ruins'
+          ? buildRuinsPattern()
+          : (mapPhase === 'railway'
+            ? buildRailwayPattern()
+            : (mapPhase === 'cliff' ? buildCliffPattern() : (useCombo ? buildComboPattern() : buildSinglePattern())))))));
 
 for (const item of pattern) {
 spawnObstacleAt(item.type, item.lane, item.z);
@@ -5771,6 +6843,9 @@ if (composer) { composer.setSize(window.innerWidth, window.innerHeight); }
 camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
 }
 function startGame() {
+clearCanyonFallFx();
+restoreRobotVisibility();
+if (player) player.position.set(0, 0, 0);
 initAudio(); if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 if(windGainNode) { windGainNode.gain.setValueAtTime(0, audioCtx.currentTime); windGainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 2); }
 if(airWhooshGainNode) { airWhooshGainNode.gain.setValueAtTime(0.0001, audioCtx.currentTime); }
@@ -5788,6 +6863,7 @@ reviveUsed = false; reviveInvulnFrames = 0; adPlaying = false;
 updateHud();
 distance = 0; coins = 0; score = 0; bonusScore = 0; trickScoreTotal = 0; comboScoreTotal = 0; coinScoreTotal = 0; airDistanceBonus = 0; currentJumpTrickScore = 0; currentJumpPeakY = 0; currentJumpParts = []; currentJumpStartSpeed = 0; currentJumpStartVelocity = 0; currentJumpRampBoost = false; speed = baseSpeed; currentLane = 0; playerX = 0;
 playerY = basePlayerY;
+if (player) player.position.set(0, 0, 0);
 isJumping = false; isDucking = false; crouchAmount = 0; slideTimer = 0; velocityY = 0; isCrashed = false; isGrinding = false; grindTimer = 0; grindBalance = 0; grindVelocity = 0; grindInput = 0; grindRail = null; lastRailSpawnDistance = -999; lastJumpSpawnDistance = -999; lastSideSpawnDistance = -999; lastAnySpawnDistance = -999; lastComboPattern = -1; difficultyTier = 0; difficultyName = 'EASY';
 shakeIntensity = 0; currentTrick = 'NONE'; comboStreak = 0; bestCombo = 0; comboTimer = 0; crashMode = 'default'; chooseGlideVariant(); laneShiftTimer = 0; laneShiftDir = 0;
 if (skeleton.root) skeleton.root.visible = true;
@@ -5799,6 +6875,8 @@ if(animationFrameId) cancelAnimationFrame(animationFrameId);
 gameLoop();
 }
 function restartGame() {
+clearCanyonFallFx();
+restoreRobotVisibility();
 clearObstaclesForCourseChange();
 crashPieces.forEach(p => scene.remove(p.mesh)); crashPieces = [];
 crashImpact = null;
@@ -5927,6 +7005,7 @@ cable: new THREE.MeshStandardMaterial({ color: 0x232a33, metalness: 0.8, roughne
 seat: new THREE.MeshStandardMaterial({ color: 0x2c4a75, roughness: 0.6 }),
 wood: new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.9 }),
 glassWarm: new THREE.MeshStandardMaterial({ color: 0xffd98f, emissive: 0xffb347, emissiveIntensity: 0.75, roughness: 0.35 }),
+glassCool: new THREE.MeshStandardMaterial({ color: 0xbcdcff, emissive: 0x6fa8ff, emissiveIntensity: 0.25, roughness: 0.22, metalness: 0.08 }),
 roofSnow: new THREE.MeshStandardMaterial({ color: 0xf2f7ff, roughness: 0.8 }),
 net: new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.85, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
 catRed: new THREE.MeshStandardMaterial({ color: 0xc22e2e, roughness: 0.5, metalness: 0.2 }),
@@ -5935,7 +7014,13 @@ lamp: new THREE.MeshBasicMaterial({ color: 0xfff1c4 }),
 pennant1: new THREE.MeshBasicMaterial({ color: 0xe14444, side: THREE.DoubleSide }),
 pennant2: new THREE.MeshBasicMaterial({ color: 0xf5c542, side: THREE.DoubleSide }),
 pennant3: new THREE.MeshBasicMaterial({ color: 0x3b7ae0, side: THREE.DoubleSide }),
-umbrella: new THREE.MeshStandardMaterial({ color: 0xd94f4f, roughness: 0.7, side: THREE.DoubleSide })
+umbrella: new THREE.MeshStandardMaterial({ color: 0xd94f4f, roughness: 0.7, side: THREE.DoubleSide }),
+pine: new THREE.MeshStandardMaterial({ color: 0x2e5b3c, roughness: 0.92 }),
+pineSnow: new THREE.MeshStandardMaterial({ color: 0xf4f8ff, roughness: 0.82 }),
+stone: new THREE.MeshStandardMaterial({ color: 0x88919b, roughness: 0.95 }),
+signBlue: new THREE.MeshStandardMaterial({ color: 0x2d6bd1, roughness: 0.55 }),
+signRed: new THREE.MeshStandardMaterial({ color: 0xcc3b3b, roughness: 0.55 }),
+accent: new THREE.MeshStandardMaterial({ color: 0xf0c15d, roughness: 0.52, metalness: 0.16 })
 };
 }
 
@@ -5943,164 +7028,350 @@ function createResortChunk(materials) {
 const chunk = new THREE.Group();
 const dummy = new THREE.Object3D();
 
-// --- Bakımlı pist zemini: corduroy (tırmık) izleri + kenarlarda mavi ton ---
-const g = new THREE.PlaneGeometry(160, 400, 30, 96);
+function addPine(x, z, s = 1) {
+  const tree = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15 * s, 0.2 * s, 1.8 * s, 6), materials.wood);
+  trunk.position.y = 0.9 * s;
+  trunk.castShadow = true;
+  tree.add(trunk);
+  const tiers = [
+    { r: 1.35, h: 2.2, y: 1.95 },
+    { r: 1.02, h: 1.9, y: 2.95 },
+    { r: 0.76, h: 1.65, y: 3.78 }
+  ];
+  for (const t of tiers) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(t.r * s, t.h * s, 10), materials.pine);
+    cone.position.y = t.y * s;
+    cone.castShadow = true;
+    cone.receiveShadow = true;
+    tree.add(cone);
+    const snow = new THREE.Mesh(new THREE.ConeGeometry(t.r * 0.82 * s, 0.22 * s, 10), materials.pineSnow);
+    snow.position.y = (t.y + t.h * 0.24) * s;
+    tree.add(snow);
+  }
+  tree.position.set(x, 0, z);
+  tree.rotation.y = Math.random() * Math.PI * 2;
+  tree.scale.setScalar(0.88 + Math.random() * 0.26);
+  chunk.add(tree);
+}
+
+function addModernLodge(side, baseZ) {
+  const lodge = new THREE.Group();
+  const bodyMain = new THREE.Mesh(new THREE.BoxGeometry(15, 5.4, 9.8), materials.wood);
+  bodyMain.position.y = 2.7; bodyMain.castShadow = true; bodyMain.receiveShadow = true; lodge.add(bodyMain);
+  const bodyWing = new THREE.Mesh(new THREE.BoxGeometry(9, 4.2, 7.8), materials.wood);
+  bodyWing.position.set(side > 0 ? -8.8 : 8.8, 2.1, 0); bodyWing.castShadow = true; bodyWing.receiveShadow = true; lodge.add(bodyWing);
+  const roof1 = new THREE.Mesh(new THREE.BoxGeometry(16.4, 0.62, 11.0), materials.dark);
+  roof1.position.y = 5.85; roof1.castShadow = true; lodge.add(roof1);
+  const roofSnow1 = new THREE.Mesh(new THREE.BoxGeometry(16.5, 0.18, 11.1), materials.roofSnow);
+  roofSnow1.position.y = 6.22; lodge.add(roofSnow1);
+  const roof2 = new THREE.Mesh(new THREE.BoxGeometry(9.8, 0.55, 8.7), materials.dark);
+  roof2.position.set(side > 0 ? -8.8 : 8.8, 4.55, 0); roof2.castShadow = true; lodge.add(roof2);
+  const roofSnow2 = new THREE.Mesh(new THREE.BoxGeometry(9.9, 0.16, 8.8), materials.roofSnow);
+  roofSnow2.position.set(side > 0 ? -8.8 : 8.8, 4.87, 0); lodge.add(roofSnow2);
+  for (let i = 0; i < 7; i++) {
+    const win = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.55, 1.2), materials.glassWarm);
+    win.position.set(side > 0 ? 7.6 : -7.6, 3.05, -3.7 + i * 1.2); lodge.add(win);
+  }
+  for (let i = 0; i < 5; i++) {
+    const win = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.15, 1.25), materials.glassCool);
+    win.position.set(side > 0 ? -13.1 : 13.1, 2.55, -2.9 + i * 1.45); lodge.add(win);
+  }
+  const terrace = new THREE.Mesh(new THREE.BoxGeometry(8.0, 0.26, 6.6), materials.stone);
+  terrace.position.set(side > 0 ? -13.2 : 13.2, 0.14, 0); terrace.castShadow = true; terrace.receiveShadow = true; lodge.add(terrace);
+  for (const tz of [-2.4, 2.4]) {
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.32, 0.55), materials.wood);
+    bench.position.set(side > 0 ? -13.0 : 13.0, 0.55, tz); lodge.add(bench);
+  }
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(4.7, 1.0, 0.22), materials.signBlue);
+  sign.position.set(side > 0 ? -4.8 : 4.8, 6.65, 4.95); lodge.add(sign);
+  lodge.position.set(side * 36, 0, baseZ);
+  lodge.rotation.y = side > 0 ? Math.PI : 0;
+  chunk.add(lodge);
+}
+
+function addLiftLine(side, xBase, seatMat) {
+  const towerPhase = Math.random() * 8;
+  for (let i = 0; i < 5; i++) {
+    const z = -118 + towerPhase + i * 58;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.32, 12.8, 8), materials.metal);
+    post.position.set(xBase, 6.4, z); post.castShadow = true; chunk.add(post);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.34, 0.34), materials.metal);
+    arm.position.set(xBase, 12.0, z); chunk.add(arm);
+    const pulley = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.22, 14), materials.dark);
+    pulley.rotation.z = Math.PI / 2; pulley.position.set(xBase + side * 2.7, 12.0, z); chunk.add(pulley);
+  }
+  const cable = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 276), materials.cable);
+  cable.position.set(xBase + side * 1.85, 11.9, 0); chunk.add(cable);
+  let chairZ = -122 + Math.random() * 8;
+  while (chairZ < 130) {
+    const chair = new THREE.Group();
+    const hang = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), materials.cable); hang.position.y = -1.2; chair.add(hang);
+    const seatB = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.16, 0.72), seatMat); seatB.position.y = -2.36; chair.add(seatB);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.9, 0.14), seatMat); back.position.set(0, -1.95, -0.32); chair.add(back);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.12, 0.12), materials.metal); bar.position.set(0, -1.54, 0.35); chair.add(bar);
+    chair.position.set(xBase + side * 1.85, 11.9, chairZ);
+    chair.rotation.x = (Math.random() - 0.5) * 0.08;
+    chair.rotation.z = (Math.random() - 0.5) * 0.04;
+    chunk.add(chair);
+    chairZ += 28 + Math.random() * 18;
+  }
+}
+
+function addSnowmaker(x, z, rot) {
+  const g = new THREE.Group();
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 2.0, 8), materials.metal);
+  stand.position.y = 1.0; g.add(stand);
+  const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 1.1, 10), materials.metal);
+  cannon.rotation.z = Math.PI / 2; cannon.position.set(0.42, 1.95, 0); g.add(cannon);
+  const nozzle = new THREE.Mesh(new THREE.SphereGeometry(0.20, 8, 8), materials.lamp);
+  nozzle.position.set(0.95, 1.95, 0); g.add(nozzle);
+  const mistGeo = new THREE.BufferGeometry();
+  const arr = new Float32Array(18 * 3);
+  for (let i = 0; i < 18; i++) { arr[i * 3] = 1.0 + Math.random() * 1.8; arr[i * 3 + 1] = 2.0 + (Math.random() - 0.5) * 0.9; arr[i * 3 + 2] = (Math.random() - 0.5) * 0.65; }
+  mistGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const mist = new THREE.Points(mistGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.22, transparent: true, opacity: 0.68, depthWrite: false }));
+  mist.frustumCulled = false; g.add(mist);
+  g.position.set(x, 0, z); g.rotation.y = rot; chunk.add(g);
+}
+
+// Zemin: merkez koridor temiz, baş ve son taraflar daha sade bırakıldı.
+const g = new THREE.PlaneGeometry(172, 400, 34, 104);
 const p = g.attributes.position;
 const cols = new Float32Array(p.count * 3); const c = new THREE.Color();
 for (let i = 0; i < p.count; i++) {
-const x = p.getX(i), z = p.getY(i); const nz = (z + 200) / 25;
-let h = Math.sin(z * 0.045) * 0.06 + Math.sin(x * 0.18 + z * 0.03) * 0.04;
-if (Math.abs(x) > 22) h += (Math.abs(x) - 22) * 0.06;
-p.setZ(i, h);
-const cord = Math.sin(x * 2.6) * 0.016;                 // corduroy şeritleri
-const spark = (cFbm(x * 0.5, nz * 2, 5.5) - 0.5) * 0.03;
-const edge = Math.min(1, Math.max(0, (Math.abs(x) - 18) / 40));
-c.setRGB(0.84 + cord + spark - edge * 0.06, 0.88 + cord + spark - edge * 0.04, Math.min(1, 0.95 + cord + spark));
-cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+  const x = p.getX(i), z = p.getY(i), nz = (z + 200) / 24;
+  const absX = Math.abs(x);
+  let h = Math.sin(z * 0.040) * 0.05 + Math.sin(x * 0.15 + z * 0.027) * 0.04;
+  if (absX > 24) h += (absX - 24) * 0.068;
+  if (absX < 7.2) h *= 0.45;
+  p.setZ(i, h);
+  const cord = Math.sin(x * 2.85) * 0.016;
+  const spark = (cFbm(x * 0.50, nz * 2.0, 5.8) - 0.5) * 0.028;
+  const edge = Math.min(1, Math.max(0, (absX - 17) / 32));
+  c.setRGB(0.87 + cord + spark - edge * 0.07, 0.91 + cord + spark - edge * 0.05, Math.min(1, 0.97 + cord + spark));
+  cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
 }
 g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); p.needsUpdate = true; g.computeVertexNormals();
 const ground = new THREE.Mesh(g, materials.ground); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; chunk.add(ground);
 
-// --- Slalom kapıları: rastgele aralık/kenar/jitter ile (tekrar hissini kırar) ---
-const gatePoleGeo = new THREE.CylinderGeometry(0.05, 0.06, 2.4, 6);
-const gateFlagGeo = new THREE.PlaneGeometry(0.95, 0.62);
-let gz = -192 + Math.random() * 16;
+for (const side of [-1, 1]) {
+  const berm = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.65, 396), materials.roofSnow);
+  berm.position.set(side * 22.8, 0.24, 0); berm.rotation.z = side * -0.06; berm.receiveShadow = true; chunk.add(berm);
+}
+
+// Yan orman kuşağı - geçişe yardım etmesi için sınırları sade tutuldu.
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 14; i++) {
+    const z = -140 + i * 20 + (Math.random() - 0.5) * 5;
+    addPine(side * (28 + Math.random() * 13), z, 0.82 + Math.random() * 0.44);
+  }
+}
+
+// Slalom kapıları - orta bölgede.
+const gatePoleGeo = new THREE.CylinderGeometry(0.05, 0.06, 2.35, 6);
+const gateFlagGeo = new THREE.PlaneGeometry(0.96, 0.60);
+let gz = -118 + Math.random() * 8;
 let gSide = Math.random() < 0.5 ? -1 : 1;
 let gRed = Math.random() < 0.5;
-while (gz < 190) {
-if (Math.random() < 0.7) gSide = -gSide;          // çoğunlukla zikzak, bazen aynı taraf
-gRed = !gRed;
-const x = gSide * (15.9 + Math.random() * 1.4);
-for (const off of [-0.55, 0.55]) {
-const pole = new THREE.Mesh(gatePoleGeo, gRed ? materials.poleRed : materials.poleBlue);
-pole.position.set(x + off, 1.2, gz); pole.castShadow = true; chunk.add(pole);
-}
-const flag = new THREE.Mesh(gateFlagGeo, gRed ? materials.flagRed : materials.flagBlue);
-flag.position.set(x, 1.85, gz); chunk.add(flag);
-gz += 24 + Math.random() * 22;
-}
-
-// --- Telesiyej hattı (taraf rastgele): direkler + kablo + sallanan koltuklar ---
-const liftX = (Math.random() < 0.5 ? -1 : 1) * (23 + Math.random() * 4);
-const towerPhase = Math.random() * 40;
-for (let i = 0; i < 5; i++) {
-const z = -180 + towerPhase + i * 85;
-const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 11, 8), materials.metal);
-post.position.set(liftX, 5.5, z); post.castShadow = true; chunk.add(post);
-const arm = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.3, 0.3), materials.metal);
-arm.position.set(liftX, 10.6, z); chunk.add(arm);
-}
-const liftCable = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 396), materials.cable);
-liftCable.position.set(liftX, 10.2, 0); chunk.add(liftCable);
-let chairZ = -190 + Math.random() * 20;
-while (chairZ < 190) {
-const chair = new THREE.Group();
-const hang = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), materials.cable); hang.position.y = -1.1; chair.add(hang);
-const seatB = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.16, 0.7), materials.seat); seatB.position.y = -2.2; chair.add(seatB);
-const back = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 0.14), materials.seat); back.position.set(0, -1.8, -0.32); chair.add(back);
-chair.position.set(liftX, 10.2, chairZ);
-chair.rotation.x = (Math.random() - 0.5) * 0.14;
-chunk.add(chair);
-chairZ += 30 + Math.random() * 22;
+while (gz < 118) {
+  if (Math.random() < 0.82) gSide = -gSide;
+  gRed = !gRed;
+  const x = gSide * (14.6 + Math.random() * 1.3);
+  for (const off of [-0.55, 0.55]) {
+    const pole = new THREE.Mesh(gatePoleGeo, gRed ? materials.poleRed : materials.poleBlue);
+    pole.position.set(x + off, 1.18, gz); pole.castShadow = true; chunk.add(pole);
+  }
+  const flag = new THREE.Mesh(gateFlagGeo, gRed ? materials.flagRed : materials.flagBlue);
+  flag.position.set(x, 1.78, gz); chunk.add(flag);
+  gz += 22 + Math.random() * 16;
 }
 
-// --- Flama takı: pistin üstünden geçen şenlik bayrakları (yüksek, çarpmaz) ---
-{
-const tz = -80 + Math.random() * 160;
-for (const s of [-1, 1]) {
-const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 8.2, 8), materials.metal);
-pole.position.set(s * 16.5, 4.1, tz); pole.castShadow = true; chunk.add(pole);
-}
-const line = new THREE.Mesh(new THREE.BoxGeometry(33, 0.07, 0.07), materials.cable);
-line.position.set(0, 8.0, tz); chunk.add(line);
-const pennantGeo = new THREE.PlaneGeometry(0.55, 0.8);
-const pennantMats = [materials.pennant1, materials.pennant2, materials.pennant3];
-for (let i = 0; i < 11; i++) {
-const pn = new THREE.Mesh(pennantGeo, pennantMats[i % 3]);
-pn.position.set(-15 + i * 3, 7.55, tz);
-pn.rotation.x = 0.1;
-chunk.add(pn);
-}
+// Lift sistemi kalsın ama chunk sınırlarına taşmasın.
+addLiftLine(-1, -28, materials.seat);
+addLiftLine(1, 28, materials.poleBlue);
+
+for (const side of [-1, 1]) {
+  const station = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(8.6, 3.6, 7.6), materials.dark); body.position.y = 1.8; body.castShadow = true; station.add(body);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.34, 8.2), materials.roofSnow); roof.position.y = 3.72; station.add(roof);
+  const opening = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.9, 0.2), materials.glassCool); opening.position.set(side > 0 ? -4.05 : 4.05, 1.9, 0); station.add(opening);
+  station.position.set(side * 28, 0, 126);
+  station.rotation.y = side > 0 ? Math.PI : 0;
+  chunk.add(station);
 }
 
-// --- Dağ oteli / lodge (ara sıra): büyük camlı, teraslı ---
-if (Math.random() < 0.55) {
-const side = Math.random() > 0.5 ? 1 : -1;
-const lodge = new THREE.Group();
-const body = new THREE.Mesh(new THREE.BoxGeometry(12, 5, 8), materials.wood); body.position.y = 2.5; body.castShadow = true; lodge.add(body);
-const winBand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.7, 6.6), materials.glassWarm); winBand.position.set(side > 0 ? -6.05 : 6.05, 2.9, 0); lodge.add(winBand);
-const roof = new THREE.Mesh(new THREE.BoxGeometry(13.2, 0.5, 9.2), materials.wood); roof.position.y = 5.25; lodge.add(roof);
-const snowCap = new THREE.Mesh(new THREE.BoxGeometry(13.3, 0.25, 9.3), materials.roofSnow); snowCap.position.y = 5.6; lodge.add(snowCap);
-const deck = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 8), materials.wood); deck.position.set(side > 0 ? -9 : 9, 0.2, 0); lodge.add(deck);
-for (let u = 0; u < 2; u++) {
-const up = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 6), materials.metal); up.position.set((side > 0 ? -9 : 9) + (u ? 1.6 : -1.6), 1.6, u ? 2 : -2); lodge.add(up);
-const uc = new THREE.Mesh(new THREE.ConeGeometry(1.4, 0.8, 8), materials.umbrella); uc.position.set((side > 0 ? -9 : 9) + (u ? 1.6 : -1.6), 3.0, u ? 2 : -2); lodge.add(uc);
-}
-lodge.position.set(side * 32, 0, -60 + Math.random() * 120);
-lodge.rotation.y = side > 0 ? Math.PI : 0;
-chunk.add(lodge);
+// Üstteki direkli/kapılı yapılar kaldırıldı -> boş alan bırakıldı.
+
+// Lodge kümeleri.
+addModernLodge(-1, -20);
+addModernLodge(1, 52);
+
+// Yan servis kulübeleri.
+for (const side of [-1, 1]) {
+  for (const z of [-34, 82]) {
+    const hut = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(5.6, 3.0, 4.8), materials.wood); body.position.y = 1.5; body.castShadow = true; hut.add(body);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(6.3, 0.42, 5.5), materials.dark); roof.position.y = 3.25; hut.add(roof);
+    const snow = new THREE.Mesh(new THREE.BoxGeometry(6.35, 0.13, 5.55), materials.roofSnow); snow.position.y = 3.52; hut.add(snow);
+    const window = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 2.1), materials.glassWarm); window.position.set(side > 0 ? -2.82 : 2.82, 1.85, 0); hut.add(window);
+    hut.position.set(side * 38.5, 0, z + (Math.random() - 0.5) * 8);
+    hut.rotation.y = side > 0 ? Math.PI : 0; chunk.add(hut);
+  }
 }
 
-// --- Kar ezme aracı (snowcat, ara sıra park halinde) ---
-if (Math.random() < 0.5) {
-const side = Math.random() > 0.5 ? 1 : -1;
-const cat = new THREE.Group();
-const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.3, 3.8), materials.catRed); body.position.y = 1.5; body.castShadow = true; cat.add(body);
-const cab = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 1.6), materials.glassWarm); cab.position.set(0, 2.6, -0.6); cat.add(cab);
-for (const s of [-1, 1]) {
-const track = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.9, 4.6), materials.dark);
-track.position.set(s * 1.75, 0.45, 0); track.castShadow = true; cat.add(track);
-}
-const blade = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.1, 0.3), materials.metal);
-blade.position.set(0, 0.7, -2.6); blade.rotation.x = -0.25; cat.add(blade);
-cat.position.set(side * (21 + Math.random() * 6), 0, -140 + Math.random() * 280);
-cat.rotation.y = (Math.random() - 0.5) * 1.2;
-chunk.add(cat);
+// Pist kenarı teknik ekipmanlar.
+for (let i = 0; i < 2; i++) {
+  const side = i === 0 ? -1 : 1;
+  const cat = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.7, 1.35, 4.1), materials.catRed); body.position.y = 1.52; body.castShadow = true; cat.add(body);
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 1.7), materials.glassCool); cab.position.set(0, 2.6, -0.5); cat.add(cab);
+  for (const s of [-1, 1]) {
+    const track = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.92, 4.6), materials.dark); track.position.set(s * 1.75, 0.46, 0); track.castShadow = true; cat.add(track);
+  }
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(3.9, 1.05, 0.3), materials.metal); blade.position.set(0, 0.72, -2.78); blade.rotation.x = -0.22; cat.add(blade);
+  cat.position.set(side * 23.8, 0, i === 0 ? -12 : 76); cat.rotation.y = side > 0 ? -0.28 : 0.28; chunk.add(cat);
 }
 
-// --- Güvenlik ağları (turuncu, kenarlarda; sayı/konum rastgele) ---
-const netGeo = new THREE.PlaneGeometry(6.5, 1.2);
-const netCount = 6 + Math.floor(Math.random() * 4);
-for (let i = 0; i < netCount; i++) {
-const side = Math.random() < 0.5 ? -1 : 1;
-const net = new THREE.Mesh(netGeo, materials.net);
-net.position.set(side * (19 + Math.random() * 2.5), 0.7, -190 + Math.random() * 380);
-net.rotation.y = side * -(0.05 + Math.random() * 0.2);
-chunk.add(net);
+// Snowmaking hatları.
+for (const side of [-1, 1]) {
+  for (const z of [-78, 8, 96]) addSnowmaker(side * 19.2, z + (Math.random() - 0.5) * 6, side > 0 ? Math.PI : 0);
 }
 
-// --- Projektör direkleri (konumlar rastgele) ---
-for (let i = 0; i < 4; i++) {
-const side = Math.random() < 0.5 ? -1 : 1;
-const z = -170 + i * 100 + (Math.random() - 0.5) * 50;
-const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 7.5, 8), materials.metal);
-pole.position.set(side * 20.5, 3.75, z); pole.castShadow = true; chunk.add(pole);
-const head = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.5, 0.5), materials.dark);
-head.position.set(side * 20.1, 7.4, z); head.rotation.z = side * 0.35; chunk.add(head);
-const glow = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), materials.lamp);
-glow.position.set(side * 19.8, 7.25, z); chunk.add(glow);
+// Güvenlik ağları ve sınır direkleri.
+const netGeo = new THREE.PlaneGeometry(8.2, 1.3);
+for (let i = 0; i < 6; i++) {
+  const side = i % 2 === 0 ? -1 : 1;
+  const net = new THREE.Mesh(netGeo, materials.net);
+  net.position.set(side * (20.7 + Math.random() * 1.2), 0.88, -110 + Math.floor(i / 2) * 72 + (Math.random() - 0.5) * 6);
+  net.rotation.y = side * -(0.06 + Math.random() * 0.18); chunk.add(net);
 }
-
-// --- Küçük atlama tümsekleri (kicker, kenarlarda görsel; rastgele) ---
-const kickers = new THREE.InstancedMesh(new THREE.SphereGeometry(1.6, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), materials.roofSnow, 4);
-for (let i = 0; i < 4; i++) {
-const side = Math.random() < 0.5 ? -1 : 1;
-dummy.position.set(side * (17.5 + Math.random() * 3), 0, -185 + Math.random() * 370);
-dummy.scale.set(1.2 + Math.random() * 0.8, 0.55 + Math.random() * 0.35, 1.0 + Math.random() * 0.6);
-dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix();
-kickers.setMatrixAt(i, dummy.matrix);
-}
-kickers.frustumCulled = false; chunk.add(kickers);
-
-// --- Pist kenarı turuncu işaret çubukları (instanced, hafif dağınık) ---
-const edgePoles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.05, 1.6, 5), materials.net, 40);
-for (let i = 0; i < 40; i++) {
-const side = i % 2 === 0 ? -1 : 1;
-dummy.position.set(side * (15.5 + Math.random() * 0.7), 0.8, -195 + Math.floor(i / 2) * 20 + (Math.random() - 0.5) * 8);
-dummy.scale.set(1, 0.85 + Math.random() * 0.35, 1); dummy.rotation.set(0, 0, (Math.random() - 0.5) * 0.12); dummy.updateMatrix();
-edgePoles.setMatrixAt(i, dummy.matrix);
+const edgePoles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.04, 0.05, 1.65, 5), materials.net, 32);
+for (let i = 0; i < 32; i++) {
+  const side = i % 2 === 0 ? -1 : 1;
+  dummy.position.set(side * (16.8 + Math.random() * 0.7), 0.82, -126 + Math.floor(i / 2) * 16 + (Math.random() - 0.5) * 4);
+  dummy.scale.set(1, 0.9 + Math.random() * 0.26, 1); dummy.rotation.set(0, 0, (Math.random() - 0.5) * 0.08); dummy.updateMatrix(); edgePoles.setMatrixAt(i, dummy.matrix);
 }
 edgePoles.frustumCulled = false; chunk.add(edgePoles);
+
+// Yön tabelaları - sade.
+for (const side of [-1, 1]) {
+  for (const z of [-16, 92]) {
+    const sign = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 2.2, 6), materials.metal); pole.position.y = 1.1; sign.add(pole);
+    const boardA = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.62, 0.14), materials.signBlue); boardA.position.set(side > 0 ? -0.92 : 0.92, 1.95, 0); sign.add(boardA);
+    sign.position.set(side * 20.2, 0, z + (Math.random() - 0.5) * 6); sign.rotation.y = side > 0 ? -0.14 : 0.14; chunk.add(sign);
+  }
+}
+
+// Uzak yan oteller - sınır bölgelerine değil, orta kısma yakın.
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 3; i++) {
+    const bld = new THREE.Group();
+    const w = 6 + Math.random() * 4.5, h = 3.4 + Math.random() * 2.6, d = 5 + Math.random() * 3.8;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materials.wood); body.position.y = h * 0.5; body.castShadow = true; body.receiveShadow = true; bld.add(body);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.8, 0.34, d + 0.8), materials.dark); roof.position.y = h + 0.26; bld.add(roof);
+    const snow = new THREE.Mesh(new THREE.BoxGeometry(w + 0.9, 0.12, d + 0.9), materials.roofSnow); snow.position.y = h + 0.48; bld.add(snow);
+    bld.position.set(side * (44 + Math.random() * 16), 0, -72 + i * 72 + (Math.random() - 0.5) * 10);
+    bld.rotation.y = Math.random() * Math.PI; chunk.add(bld);
+  }
+}
+
+// ===== VADİ YAMAÇLARI (yan karlı dağ duvarları) =====
+// Koridorun iki yanındaki BOŞLUĞU kapatır: dar pistin kenarından (x~66) uzak
+// backdrop dağlarına (x~188) kadar yükselen kesintisiz karlı yamaç. Yükseklik
+// alanı z'de 400 periyodludur (yalnızca π/200'ün tam katı sinüsler) -> chunk
+// sınırlarında dikişsiz eklenir; böylece ilk harita/döngü geçişindeki
+// "sırıtma" da kalkar. Zeminle aynı hızda aktığı için her zaman hizalı kalır.
+function wallHeight(u, z) {
+  const ridge = Math.pow(u, 1.32);
+  const w1 = Math.sin(z * Math.PI / 200 + 1.7);
+  const w2 = Math.sin(z * Math.PI / 100 + 2.3);
+  const w3 = Math.sin(z * Math.PI / (200 / 3) + 0.6);
+  const ripple = (w1 * 0.55 + w2 * 0.28 + w3 * 0.17) * (3.4 + u * 24);
+  // enine oluk/sırt hatları (u serbest: her chunk'ta aynı, dikişi bozmaz)
+  const gully = (Math.sin(u * 13.5 + 1.3) * 0.55 + Math.sin(u * 29.0) * 0.22) * u * (5.5 + w1 * 2.6);
+  return 2.2 + ridge * 80 + ripple + gully;
+}
+function addValleySide(side) {
+  const segU = 26, segZ = 96;
+  const innerX = 66, outerX = 188;
+  const vcount = (segU + 1) * (segZ + 1);
+  const pos = new Float32Array(vcount * 3);
+  const col = new Float32Array(vcount * 3);
+  const cc = new THREE.Color();
+  let vi = 0;
+  for (let iu = 0; iu <= segU; iu++) {
+    const u = iu / segU;
+    const x = side * (innerX + u * (outerX - innerX));
+    for (let iz = 0; iz <= segZ; iz++) {
+      const z = -200 + (iz / segZ) * 400;
+      const y = wallHeight(u, z);
+      pos[vi * 3] = x; pos[vi * 3 + 1] = y; pos[vi * 3 + 2] = z;
+      vi++;
+    }
+  }
+  const idx = [];
+  const stride = segZ + 1;
+  for (let iu = 0; iu < segU; iu++) {
+    for (let iz = 0; iz < segZ; iz++) {
+      const a = iu * stride + iz, b = a + 1, cN = a + stride, d = cN + 1;
+      // sarım yönü tarafa göre; normaller yukarı baksın
+      if (side < 0) { idx.push(a, b, cN, b, d, cN); } else { idx.push(a, cN, b, b, cN, d); }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const nor = geo.attributes.normal;
+  vi = 0;
+  for (let iu = 0; iu <= segU; iu++) {
+    const u = iu / segU;
+    for (let iz = 0; iz <= segZ; iz++) {
+      const y = pos[vi * 3 + 1];
+      const upness = Math.abs(nor.getY(vi));
+      const slope = Math.min(1, Math.max(0, 1 - upness));
+      // dik/oluklu yüzeylerde soğuk kaya, düz-yüksek yerlerde temiz kar
+      const rock = Math.min(1, slope * 1.55);
+      let r = 0.93, g = 0.96, b = 1.0;
+      r = r + (0.40 - r) * rock; g = g + (0.44 - g) * rock; b = b + (0.52 - b) * rock;
+      // etek gölgesi (koridora yakın alçak kesim biraz koyu)
+      const shade = 0.9 + Math.min(0.1, y * 0.006) + (1 - u) * -0.04;
+      cc.setRGB(r * shade, g * shade, b * shade);
+      col[vi * 3] = cc.r; col[vi * 3 + 1] = cc.g; col[vi * 3 + 2] = cc.b;
+      vi++;
+    }
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const wall = new THREE.Mesh(geo, materials.ground);
+  wall.receiveShadow = true;
+  chunk.add(wall);
+
+  // Alçak yamaca seyrek çam kuşağı (gerçekçi ağaç dağılımı, dikişi bozmayan yerleşim).
+  for (let i = 0; i < 11; i++) {
+    const u = 0.08 + (i % 5) * 0.052 + Math.random() * 0.03;
+    const z = -186 + i * 35 + (Math.random() - 0.5) * 10;
+    const x = side * (innerX + u * (outerX - innerX));
+    const y = wallHeight(u, z);
+    const tree = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 1.7, 5), materials.wood);
+    trunk.position.y = 0.85; tree.add(trunk);
+    for (const t of [{ r: 1.25, h: 2.1, y: 1.9 }, { r: 0.92, h: 1.7, y: 2.85 }, { r: 0.66, h: 1.4, y: 3.6 }]) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(t.r, t.h, 8), materials.pine);
+      cone.position.y = t.y; tree.add(cone);
+      const sn = new THREE.Mesh(new THREE.ConeGeometry(t.r * 0.8, 0.2, 8), materials.pineSnow);
+      sn.position.y = t.y + t.h * 0.24; tree.add(sn);
+    }
+    const sc = 0.9 + Math.random() * 0.7;
+    tree.scale.setScalar(sc);
+    tree.position.set(x, y - 0.2, z);
+    tree.rotation.y = Math.random() * Math.PI * 2;
+    chunk.add(tree);
+  }
+}
+addValleySide(-1);
+addValleySide(1);
 
 return chunk;
 }
@@ -6191,114 +7462,463 @@ const b = new THREE.Group();
 const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, dx = x1 - x0, dy = y1 - y0;
 const len = Math.sqrt(dx * dx + dy * dy);
 const ang = Math.atan2(dy, dx);
-const plank = new THREE.Mesh(new THREE.BoxGeometry(len, 0.2, 2.2), materials.wood);
-plank.position.set(mx, my, z); plank.rotation.z = ang; plank.castShadow = true; b.add(plank);
-for (const s of [-1, 1]) {
-const rope = new THREE.Mesh(new THREE.BoxGeometry(len, 0.06, 0.06), materials.rope);
-rope.position.set(mx, my + 0.9, z + s * 1.1); rope.rotation.z = ang; b.add(rope);
+const plank = new THREE.Mesh(new THREE.BoxGeometry(len, 0.24, 2.6), materials.wood);
+plank.position.set(mx, my, z); plank.rotation.z = ang; plank.castShadow = true; plank.receiveShadow = true; b.add(plank);
+for (const side of [-1, 1]) {
+  const rope = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.08), materials.rope);
+  rope.position.set(mx, my + 0.95, z + side * 1.25); rope.rotation.z = ang; b.add(rope);
+  for (let i = 0; i < 7; i++) {
+    const t = i / 6;
+    const hanger = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.9, 0.06), materials.rope);
+    hanger.position.set(x0 + dx * t, y0 + dy * t + 0.42, z + side * 1.15);
+    b.add(hanger);
+  }
 }
 return b;
 }
 
+function makeSkyWaterfall(materials, height) {
+const g = new THREE.Group();
+for (const ox of [-0.55, 0, 0.55]) {
+  const fall = new THREE.Mesh(new THREE.BoxGeometry(0.78, height, 0.28), materials.water);
+  fall.position.set(ox, -height * 0.5, 0);
+  g.add(fall);
+}
+const lip = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.15, 0.5), materials.waterTop);
+lip.position.y = 0.05;
+g.add(lip);
+const mistGeo = new THREE.BufferGeometry();
+const pts = new Float32Array(34 * 3);
+for (let i = 0; i < 34; i++) {
+  pts[i * 3] = (Math.random() - 0.5) * 3.0;
+  pts[i * 3 + 1] = -height + Math.random() * 2.8;
+  pts[i * 3 + 2] = (Math.random() - 0.5) * 1.4;
+}
+mistGeo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+const mist = new THREE.Points(mistGeo, materials.mist);
+mist.frustumCulled = false;
+g.add(mist);
+return g;
+}
+
+function makeSkyBalloon(materials) {
+const g = new THREE.Group();
+const shell = new THREE.Mesh(new THREE.SphereGeometry(3.7, 18, 14), materials.flower);
+shell.scale.set(1.0, 1.18, 1.0);
+shell.castShadow = true;
+g.add(shell);
+const band = new THREE.Mesh(new THREE.TorusGeometry(3.16, 0.12, 8, 30), materials.rope);
+band.rotation.x = Math.PI / 2;
+band.position.y = -0.48;
+g.add(band);
+for (const sx of [-1, 1]) {
+  for (const sz of [-1, 1]) {
+    const rope = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.9, 0.05), materials.rope);
+    rope.position.set(sx * 1.12, -4.1, sz * 1.12);
+    g.add(rope);
+  }
+}
+const basket = new THREE.Mesh(new THREE.BoxGeometry(1.82, 1.1, 1.82), materials.wood);
+basket.position.y = -5.72;
+basket.castShadow = true;
+g.add(basket);
+return g;
+}
+
+function makeSkyTemple(materials) {
+const g = new THREE.Group();
+const base = new THREE.Mesh(new THREE.BoxGeometry(9.6, 1.3, 9.6), materials.rock);
+base.position.y = 0.65; base.castShadow = true; base.receiveShadow = true; g.add(base);
+const top = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.28, 8.8), materials.islandTop);
+top.position.y = 1.42; top.receiveShadow = true; g.add(top);
+for (const sx of [-1, 1]) {
+  for (const sz of [-1, 1]) {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.58, 4.8, 10), materials.rock);
+    col.position.set(sx * 2.55, 3.85, sz * 2.55); col.castShadow = true; g.add(col);
+  }
+}
+const roof = new THREE.Mesh(new THREE.BoxGeometry(7.7, 0.72, 7.7), materials.rock);
+roof.position.y = 6.7; roof.castShadow = true; g.add(roof);
+const cap = new THREE.Mesh(new THREE.ConeGeometry(4.0, 2.4, 4), materials.houseRoof);
+cap.position.y = 8.35; cap.rotation.y = Math.PI / 4; cap.castShadow = true; g.add(cap);
+for (const x of [-1.55, 1.55]) {
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.48, 0), materials.crystal);
+  crystal.position.set(x, 2.25, 0); crystal.scale.y = 1.8; crystal.castShadow = true; g.add(crystal);
+}
+return g;
+}
+
+function makeSkyArch(materials, width = 18, height = 12) {
+const g = new THREE.Group();
+const left = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.2, height, 10), materials.rock);
+left.position.set(-width * 0.5, height * 0.5, 0); left.castShadow = true; g.add(left);
+const right = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.2, height, 10), materials.rock);
+right.position.set(width * 0.5, height * 0.5, 0); right.castShadow = true; g.add(right);
+const top = new THREE.Mesh(new THREE.TorusGeometry(width * 0.5, 1.0, 10, 28, Math.PI), materials.rock);
+top.rotation.z = Math.PI; top.position.y = height; top.castShadow = true; g.add(top);
+for (const x of [-width * 0.42, width * 0.42]) {
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), materials.crystal);
+  crystal.position.set(x, 2.2, 0.9); crystal.scale.y = 1.9; g.add(crystal);
+}
+return g;
+}
+
+function makeCloudSpire(materials) {
+const g = new THREE.Group();
+for (let i = 0; i < 3; i++) {
+  const puff = new THREE.Mesh(new THREE.SphereGeometry(2.0 + i * 0.65, 12, 10), materials.cloudSea);
+  puff.position.set((Math.random() - 0.5) * 1.2, i * 2.0, (Math.random() - 0.5) * 1.2);
+  puff.scale.y = 0.72;
+  g.add(puff);
+}
+const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.9, 0), materials.crystal);
+crystal.position.y = 6.7; crystal.scale.y = 2.5; g.add(crystal);
+return g;
+}
+
 function createSkyIslandChunk(materials) {
 const chunk = new THREE.Group();
-const dummy = new THREE.Object3D();
 
-// --- Merkez kara: üst (çimen + kar, hafif dalgalı) ---
-const topGeo = new THREE.PlaneGeometry(36, 400, 24, 110);
-const tp = topGeo.attributes.position; const tcol = new Float32Array(tp.count * 3); const tc = new THREE.Color();
+// --- Ana yol adası: merkez koridor temiz, detaylar kenarlarda ---
+const topGeo = new THREE.PlaneGeometry(42, 400, 32, 120);
+const tp = topGeo.attributes.position;
+const tcol = new Float32Array(tp.count * 3);
+const tc = new THREE.Color();
 for (let i = 0; i < tp.count; i++) {
-const x = tp.getX(i), z = tp.getY(i); const nz = (z + 200) / 25;
-let h = (cFbm(x * 0.04, nz, 4.1) - 0.5) * 0.5;
-const edge = Math.max(0, Math.abs(x) - 12); h += edge * 0.06;   // kenar kar bordürü hafif yükselir
+const x = tp.getX(i), z = tp.getY(i), nz = (z + 200) / 25;
+const absX = Math.abs(x);
+const edge = Math.max(0, absX - 13.5);
+let h = (cFbm(x * 0.05 + 8.2, nz, 5.0) - 0.5) * 0.34;
+h += Math.sin(z * 0.042) * 0.045;
+h += edge * 0.090;
+// Oyun koridoru çok daha temiz kalsın.
+if (absX < 8.8) h *= 0.22;
+if (absX < 5.5) h *= 0.55;
 tp.setZ(i, h);
-let r = 0.86, g = 0.90, b = 0.97;                                // temiz kar
-if (Math.abs(Math.abs(x) - 2.4) < 0.55) { r -= 0.12; g -= 0.11; b -= 0.08; }   // iki kayak izi
-const spark = (cFbm(x * 0.6, nz * 2, 6.6) - 0.5) * 0.06; r += spark; g += spark; b += spark;
-tc.setRGB(Math.min(1, r), Math.min(1, g), Math.min(1, b));
+
+let r = 0.90, g = 0.94, b = 0.99;
+if (Math.abs(absX - 2.5) < 0.55) { r -= 0.15; g -= 0.14; b -= 0.11; }
+if (edge > 0.5) { r -= 0.02; g += 0.02; b += 0.01; }
+const spark = (cFbm(x * 0.70 + 5.0, nz * 2.2, 6.5) - 0.5) * 0.04;
+r += spark; g += spark; b += spark;
+tc.setRGB(Math.min(1, Math.max(0, r)), Math.min(1, Math.max(0, g)), Math.min(1, Math.max(0, b)));
 tcol[i * 3] = tc.r; tcol[i * 3 + 1] = tc.g; tcol[i * 3 + 2] = tc.b;
 }
-topGeo.setAttribute('color', new THREE.BufferAttribute(tcol, 3)); tp.needsUpdate = true; topGeo.computeVertexNormals();
-const top = new THREE.Mesh(topGeo, materials.ridge); top.rotation.x = -Math.PI / 2; top.receiveShadow = true; chunk.add(top);
+topGeo.setAttribute('color', new THREE.BufferAttribute(tcol, 3));
+tp.needsUpdate = true;
+topGeo.computeVertexNormals();
+const top = new THREE.Mesh(topGeo, materials.ridge);
+top.rotation.x = -Math.PI / 2;
+top.receiveShadow = true;
+chunk.add(top);
 
-// --- Merkez kara: alt kayalık gövde (çok-oktavlı + eğim/AO renkli) ---
-const keelGeo = new THREE.PlaneGeometry(36, 400, 24, 110);
+const keelGeo = new THREE.PlaneGeometry(44, 400, 32, 120);
 const kp = keelGeo.attributes.position;
 for (let i = 0; i < kp.count; i++) {
-const x = kp.getX(i), z = kp.getY(i); const ax = Math.abs(x); const nz = (z + 200) / 25;
-let depth = -16 * Math.pow(1 - Math.min(1, ax / 18), 1.3) - 1;
-depth += (cFbm(x * 0.08, nz, 12.2) - 0.5) * 7 * (1 - ax / 18);
+const x = kp.getX(i), z = kp.getY(i), ax = Math.abs(x), nz = (z + 200) / 25;
+let depth = -19.5 * Math.pow(1 - Math.min(1, ax / 22), 1.26) - 1.4;
+depth += (cFbm(x * 0.09 + 4.0, nz, 12.4) - 0.5) * 8.0 * (1 - ax / 22);
 kp.setZ(i, depth);
 }
-kp.needsUpdate = true; keelGeo.computeVertexNormals();
-const knor = keelGeo.attributes.normal; const kcol = new Float32Array(kp.count * 3); const kc = new THREE.Color();
+kp.needsUpdate = true;
+keelGeo.computeVertexNormals();
+const kn = keelGeo.attributes.normal;
+const kcol = new Float32Array(kp.count * 3);
+const kc = new THREE.Color();
 for (let i = 0; i < kp.count; i++) {
 const y = kp.getZ(i);
-const d = Math.min(1, Math.max(0, -y / 17));
-const slope = Math.min(1, Math.max(0, 1 - knor.getZ(i)));
-let r = 0.80 - d * 0.44, g = 0.86 - d * 0.40, b = 0.95 - d * 0.30;   // üst beyaz kar -> derin buz mavisi
-const sh = 1 - slope * 0.22; r *= sh; g *= sh; b *= sh;
+const d = Math.min(1, Math.max(0, -y / 20));
+const slope = Math.min(1, Math.max(0, 1 - kn.getZ(i)));
+let r = 0.81 - d * 0.42, g = 0.88 - d * 0.37, b = 0.98 - d * 0.28;
+const sh = 1 - slope * 0.22;
+r *= sh; g *= sh; b *= sh;
 kc.setRGB(Math.max(0, r), Math.max(0, g), Math.max(0, b));
 kcol[i * 3] = kc.r; kcol[i * 3 + 1] = kc.g; kcol[i * 3 + 2] = kc.b;
 }
 keelGeo.setAttribute('color', new THREE.BufferAttribute(kcol, 3));
-const keel = new THREE.Mesh(keelGeo, materials.keel); keel.rotation.x = -Math.PI / 2; chunk.add(keel);
+const keel = new THREE.Mesh(keelGeo, materials.keel);
+keel.rotation.x = -Math.PI / 2;
+chunk.add(keel);
 
-// (Merkez sırt pürüzsüz kar; çimen/ağaç yok -> referanstaki temiz karlı yol)
+// Merkez yolun dışına ince ışık çizgileri / yol hissi.
+for (const x of [-2.5, 2.5]) {
+  const line = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 400), materials.crystal);
+  line.position.set(x, 0.04, 0);
+  line.castShadow = false;
+  chunk.add(line);
+}
 
-// --- Dalgalanan bulut denizi (çok aşağıda) + bulutlar ---
-const seaGeo = new THREE.PlaneGeometry(760, 400, 44, 40);
+// Kenarlarda, oyun alanını işgal etmeyen kaya + kristal bordürler.
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 12; i++) {
+    const z = -186 + i * 34 + (Math.random() - 0.5) * 10;
+    const x = side * (18.6 + Math.random() * 4.8);
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1.0 + Math.random() * 0.8, 0), materials.rock);
+    rock.position.set(x, 1.0, z);
+    rock.scale.y = 0.72;
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    chunk.add(rock);
+    if (Math.random() < 0.74) {
+      const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.44 + Math.random() * 0.28, 0), materials.crystal);
+      crystal.position.set(x + side * 0.85, 1.6, z + (Math.random() - 0.5) * 2.3);
+      crystal.scale.y = 2.2;
+      crystal.rotation.set(Math.random(), Math.random(), Math.random());
+      chunk.add(crystal);
+    }
+    if (Math.random() < 0.46) {
+      const tree = makeIslandTree(materials);
+      tree.position.set(x + side * 1.4, 0.3, z + (Math.random() - 0.5) * 4.6);
+      tree.scale.setScalar(0.44 + Math.random() * 0.24);
+      chunk.add(tree);
+    }
+  }
+}
+
+// Büyük yan şelaleler - daha dışarıda.
+for (const side of [-1, 1]) {
+  for (const z of [-168, -82, 8, 96, 182]) {
+    const wf = makeSkyWaterfall(materials, 18 + Math.random() * 12);
+    wf.position.set(side * 21.8, -0.2, z + (Math.random() - 0.5) * 12);
+    wf.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+    wf.frustumCulled = false;
+    chunk.add(wf);
+  }
+}
+
+// Yanlarda büyük halka yapılar / anıtsal halkalar. Yolun üstüne değil, dışarıya konumlanır.
+for (const side of [-1, 1]) {
+  for (const z of [-138, -18, 108]) {
+    const ringGroup = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(6.8, 0.78, 12, 32), materials.rock);
+    ring.rotation.y = Math.PI / 2;
+    ring.castShadow = true;
+    ringGroup.add(ring);
+    const inner = new THREE.Mesh(new THREE.TorusGeometry(5.2, 0.18, 8, 28), materials.crystal);
+    inner.rotation.y = Math.PI / 2;
+    ringGroup.add(inner);
+    for (const ang of [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]) {
+      const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), materials.crystal);
+      crystal.position.set(Math.cos(ang) * 6.8, Math.sin(ang) * 6.8, 0);
+      crystal.scale.y = 2.1;
+      ringGroup.add(crystal);
+    }
+    ringGroup.position.set(side * (32 + Math.random() * 6), 11 + Math.random() * 3.5, z + (Math.random() - 0.5) * 10);
+    ringGroup.scale.setScalar(1.0 + Math.random() * 0.25);
+    ringGroup.frustumCulled = false;
+    chunk.add(ringGroup);
+  }
+}
+
+// Yan gökyüzü tapınak terasları.
+for (const side of [-1, 1]) {
+  for (const z of [-154, -12, 134]) {
+    const platform = new THREE.Group();
+    const island = makeFloatingIsland(materials, 7.2 + Math.random() * 2.0, 10.0 + Math.random() * 3.0);
+    island.scale.setScalar(1.18);
+    platform.add(island);
+    const temple = makeSkyTemple(materials);
+    temple.position.y = 1.0;
+    temple.scale.setScalar(0.82 + Math.random() * 0.12);
+    temple.rotation.y = Math.random() * Math.PI * 2;
+    platform.add(temple);
+    platform.position.set(side * (40 + Math.random() * 12), 9 + Math.random() * 6, z + (Math.random() - 0.5) * 10);
+    platform.frustumCulled = false;
+    chunk.add(platform);
+  }
+}
+
+// Uzak bulut denizi.
+const seaGeo = new THREE.PlaneGeometry(900, 400, 56, 44);
 const sp = seaGeo.attributes.position;
-for (let i = 0; i < sp.count; i++) { const x = sp.getX(i), z = sp.getY(i); sp.setZ(i, Math.sin(x * 0.05) * 1.6 + Math.sin(z * 0.04) * 1.4 + (cFbm(x * 0.02 + 50, (z + 200) / 25, 2.2) - 0.5) * 5); }
-sp.needsUpdate = true; seaGeo.computeVertexNormals();
-const sea = new THREE.Mesh(seaGeo, materials.cloudSea); sea.rotation.x = -Math.PI / 2; sea.position.y = -70; sea.frustumCulled = false; chunk.add(sea);
-const cloudGeo = new THREE.BufferGeometry(); const cp = new Float32Array(110 * 3);
-for (let i = 0; i < 110; i++) { cp[i * 3] = (Math.random() - 0.5) * 380; cp[i * 3 + 1] = -16 - Math.random() * 48; cp[i * 3 + 2] = (Math.random() - 0.5) * 400; }
+for (let i = 0; i < sp.count; i++) {
+  const x = sp.getX(i), z = sp.getY(i);
+  sp.setZ(i, Math.sin(x * 0.05) * 1.8 + Math.sin(z * 0.04) * 1.55 + (cFbm(x * 0.02 + 50, (z + 200) / 25, 2.2) - 0.5) * 5.6);
+}
+sp.needsUpdate = true;
+seaGeo.computeVertexNormals();
+const sea = new THREE.Mesh(seaGeo, materials.cloudSea);
+sea.rotation.x = -Math.PI / 2;
+sea.position.y = -70;
+sea.frustumCulled = false;
+chunk.add(sea);
+
+const cloudGeo = new THREE.BufferGeometry();
+const cp = new Float32Array(190 * 3);
+for (let i = 0; i < 190; i++) {
+  cp[i * 3] = (Math.random() - 0.5) * 460;
+  cp[i * 3 + 1] = -16 - Math.random() * 58;
+  cp[i * 3 + 2] = (Math.random() - 0.5) * 430;
+}
 cloudGeo.setAttribute('position', new THREE.BufferAttribute(cp, 3));
-const clouds = new THREE.Points(cloudGeo, materials.cloud); clouds.frustumCulled = false; chunk.add(clouds);
+const clouds = new THREE.Points(cloudGeo, materials.cloud);
+clouds.frustumCulled = false;
+chunk.add(clouds);
 
-// --- İki yanı saran karlı dağlar: artık global mountainBackdrop panoramasıyla verilir ---
-
-// --- Çok aşağıda kıvrılan nehir ---
-{
-const side = Math.random() > 0.5 ? 1 : -1;
-for (let i = 0; i < 8; i++) {
-const seg = new THREE.Mesh(new THREE.BoxGeometry(3 + Math.random() * 2, 0.3, 54), materials.river);
-seg.position.set(side * (55 + Math.sin(i * 0.9) * 22), -66, -200 + i * 52);
-seg.rotation.y = Math.sin(i * 0.9) * 0.5; seg.frustumCulled = false; chunk.add(seg);
-}
-}
-
-// --- Çok aşağıda minik köy ---
-{
-const side = Math.random() > 0.5 ? 1 : -1;
+// Bulut sütunları / kuleler.
 for (let i = 0; i < 10; i++) {
-const hs = new THREE.Group();
-const b = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 2.6), materials.house); b.position.y = 0.8; hs.add(b);
-const rf = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.3, 4), materials.houseRoof); rf.rotation.y = Math.PI / 4; rf.position.y = 2.1; hs.add(rf);
-hs.position.set(side * (46 + Math.random() * 32), -64, -160 + i * 30 + (Math.random() - 0.5) * 20);
-hs.scale.setScalar(0.9 + Math.random() * 0.5);
-hs.frustumCulled = false; chunk.add(hs);
+  const spire = makeCloudSpire(materials);
+  spire.position.set((i % 2 ? 1 : -1) * (52 + Math.random() * 42), -56 + Math.random() * 8, -182 + i * 40 + (Math.random() - 0.5) * 10);
+  spire.scale.setScalar(1.0 + Math.random() * 0.7);
+  spire.frustumCulled = false;
+  chunk.add(spire);
+}
+
+// Yanlarda daha çok ve daha büyük floating island kümeleri.
+const islandAnchors = [];
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 9; i++) {
+    const topR = 5.4 + Math.random() * 6.4;
+    const island = makeFloatingIsland(materials, topR, 11.0 + Math.random() * 11.5);
+    const x = side * (34 + Math.random() * 52);
+    const y = 6 + Math.random() * 15;
+    const z = -182 + i * 48 + (Math.random() - 0.5) * 18;
+    island.position.set(x, y, z);
+    island.rotation.y = Math.random() * Math.PI * 2;
+    island.scale.setScalar(0.94 + Math.random() * 0.42);
+    island.frustumCulled = false;
+    if (Math.random() < 0.68) {
+      const wf = makeSkyWaterfall(materials, 11 + Math.random() * 14);
+      wf.position.set((Math.random() - 0.5) * 1.5, -0.2, 0);
+      wf.rotation.y = Math.random() * Math.PI * 2;
+      island.add(wf);
+    }
+    if (Math.random() < 0.38) {
+      const temple = makeSkyTemple(materials);
+      temple.position.y = 0.8;
+      temple.scale.setScalar(0.56 + Math.random() * 0.28);
+      temple.rotation.y = Math.random() * Math.PI * 2;
+      island.add(temple);
+    }
+    chunk.add(island);
+    islandAnchors.push({ x, y, z, side });
+  }
+}
+
+// Yan adalar arası köprü ağı.
+for (const side of [-1, 1]) {
+  const sameSide = islandAnchors.filter(a => a.side === side).sort((a, b) => a.z - b.z);
+  for (let i = 0; i < sameSide.length - 1; i++) {
+    if (Math.random() < 0.82) {
+      const a = sameSide[i], b = sameSide[i + 1];
+      const bridge = makeSkyBridge(materials, a.x, a.y + 1.2, b.x, b.y + 1.2, (a.z + b.z) * 0.5);
+      bridge.rotation.y = side > 0 ? -0.14 : 0.14;
+      bridge.frustumCulled = false;
+      chunk.add(bridge);
+    }
+  }
+}
+
+// Çok aşağıda kıvrılan nehir.
+{
+const side = Math.random() > 0.5 ? 1 : -1;
+for (let i = 0; i < 12; i++) {
+  const seg = new THREE.Mesh(new THREE.BoxGeometry(3.2 + Math.random() * 2.0, 0.3, 50), materials.river);
+  seg.position.set(side * (56 + Math.sin(i * 0.8) * 26), -66, -212 + i * 38);
+  seg.rotation.y = Math.sin(i * 0.9) * 0.62;
+  seg.frustumCulled = false;
+  chunk.add(seg);
 }
 }
 
-// --- Kuş sürüsü (kanat çırpıp uzaklaşırlar; updateSkyBirds yönetir) ---
-for (let i = 0; i < 12; i++) {
-const bird = new THREE.Group();
-const wings = [];
-for (const s of [-1, 1]) {
-const wing = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.4), materials.bird);
-wing.geometry.translate(s * 0.7, 0, 0);       // pivot gövdede: kanat omuzdan çırpar
-bird.add(wing);
-wings.push({ mesh: wing, side: s });
+// Aşağıda daha yoğun mini köy.
+{
+const side = Math.random() > 0.5 ? 1 : -1;
+for (let i = 0; i < 15; i++) {
+  const hs = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 2.6), materials.house);
+  body.position.y = 0.8;
+  body.castShadow = true;
+  hs.add(body);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.3, 4), materials.houseRoof);
+  roof.rotation.y = Math.PI / 4;
+  roof.position.y = 2.1;
+  roof.castShadow = true;
+  hs.add(roof);
+  if (Math.random() < 0.6) {
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.18, 4.2), materials.wood);
+    deck.position.y = -0.1;
+    hs.add(deck);
+  }
+  hs.position.set(side * (48 + Math.random() * 36), -64, -180 + i * 24 + (Math.random() - 0.5) * 14);
+  hs.scale.setScalar(0.92 + Math.random() * 0.54);
+  hs.frustumCulled = false;
+  chunk.add(hs);
 }
-const by = 16 + Math.random() * 32;
-bird.position.set((Math.random() - 0.5) * 120, by, (Math.random() - 0.5) * 380);
-bird.scale.setScalar(0.8 + Math.random() * 0.9);
-bird.frustumCulled = false;
-bird.userData = { wings: wings, phase: Math.random() * Math.PI * 2, flapFreq: 5 + Math.random() * 3.5, baseY: by, drift: 0.24 + Math.random() * 0.22 };
-skyBirds.push(bird);
-chunk.add(bird);
+}
+
+// Sıcak hava balonları.
+for (let i = 0; i < 6; i++) {
+  const balloon = makeSkyBalloon(materials);
+  balloon.position.set((i % 2 ? 1 : -1) * (62 + Math.random() * 34), 18 + Math.random() * 18, -180 + i * 82 + (Math.random() - 0.5) * 22);
+  balloon.scale.setScalar(0.80 + Math.random() * 0.34);
+  balloon.rotation.y = Math.random() * Math.PI * 2;
+  balloon.frustumCulled = false;
+  chunk.add(balloon);
+}
+
+// Uzak hava gemileri.
+for (let i = 0; i < 4; i++) {
+  const ship = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.8, 10.5, 10), materials.wood);
+  hull.rotation.z = Math.PI / 2;
+  hull.castShadow = true;
+  ship.add(hull);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.5, 2.2), materials.house);
+  cabin.position.y = -1.6;
+  cabin.castShadow = true;
+  ship.add(cabin);
+  const balloon = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 12), materials.cloudSea);
+  balloon.scale.set(1.8, 1.1, 1.1);
+  balloon.position.y = 3.4;
+  ship.add(balloon);
+  for (const sx of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.2, 2.4), materials.houseRoof);
+    fin.position.set(-4.6, 0.2, sx * 1.2);
+    ship.add(fin);
+  }
+  ship.position.set((i % 2 ? 1 : -1) * (78 + Math.random() * 26), 22 + Math.random() * 14, -164 + i * 102);
+  ship.rotation.y = i % 2 ? 0.24 : -0.24;
+  ship.scale.setScalar(0.92 + Math.random() * 0.24);
+  ship.frustumCulled = false;
+  chunk.add(ship);
+}
+
+// Çok uzakta ışıklı gökyüzü kuleleri.
+for (const side of [-1, 1]) {
+  for (const z of [-170, -54, 72, 184]) {
+    const tower = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.4, 16, 10), materials.rock);
+    shaft.position.y = 8;
+    shaft.castShadow = true;
+    tower.add(shaft);
+    const crown = new THREE.Mesh(new THREE.OctahedronGeometry(1.2, 0), materials.crystal);
+    crown.position.y = 17.8;
+    crown.scale.y = 2.2;
+    tower.add(crown);
+    tower.position.set(side * (48 + Math.random() * 10), 0, z + (Math.random() - 0.5) * 14);
+    tower.frustumCulled = false;
+    chunk.add(tower);
+  }
+}
+
+// Kuş sürüsü.
+for (let i = 0; i < 18; i++) {
+  const bird = new THREE.Group();
+  const wings = [];
+  for (const s of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.4), materials.bird);
+    wing.geometry.translate(s * 0.7, 0, 0);
+    bird.add(wing);
+    wings.push({ mesh: wing, side: s });
+  }
+  const by = 16 + Math.random() * 36;
+  bird.position.set((Math.random() - 0.5) * 160, by, (Math.random() - 0.5) * 420);
+  bird.scale.setScalar(0.8 + Math.random() * 0.9);
+  bird.frustumCulled = false;
+  bird.userData = { wings: wings, phase: Math.random() * Math.PI * 2, flapFreq: 5 + Math.random() * 3.5, baseY: by, drift: 0.24 + Math.random() * 0.22 };
+  skyBirds.push(bird);
+  chunk.add(bird);
 }
 
 return chunk;
@@ -6310,57 +7930,121 @@ return {
 ground: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
 stone: new THREE.MeshStandardMaterial({ color: 0xb9a888, roughness: 0.94 }),
 stoneDark: new THREE.MeshStandardMaterial({ color: 0x8c7d63, roughness: 0.96 }),
+stoneLight: new THREE.MeshStandardMaterial({ color: 0xcbb99b, roughness: 0.9 }),
 snow: new THREE.MeshStandardMaterial({ color: 0xeef4fb, roughness: 0.82 }),
 gold: new THREE.MeshStandardMaterial({ color: 0xcaa24a, metalness: 0.6, roughness: 0.4, emissive: 0x3a2c0c, emissiveIntensity: 0.3 }),
 flame: new THREE.MeshStandardMaterial({ color: 0xff8a2a, emissive: 0xff5a14, emissiveIntensity: 1.6, roughness: 0.5 }),
+ember: new THREE.PointsMaterial({ color: 0xffb05a, size: 0.35, transparent: true, opacity: 0.95, depthWrite: false }),
 banner: new THREE.MeshStandardMaterial({ color: 0x8a2f2f, roughness: 0.8, side: THREE.DoubleSide }),
+moss: new THREE.MeshStandardMaterial({ color: 0x73755f, roughness: 0.95 }),
 peak: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 })
 };
 }
 
 function makeRuinColumn(materials, h, broken) {
 const col = new THREE.Group();
-const base = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.9, 3.2), materials.stoneDark); base.position.y = 0.45; base.castShadow = true; col.add(base);
-const eh = broken ? h * (0.4 + Math.random() * 0.3) : h;
-const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.18, eh, 14), materials.stone); drum.position.y = 0.9 + eh / 2; drum.castShadow = true; col.add(drum);
+const base = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.9, 3.5), materials.stoneDark); base.position.y = 0.45; base.castShadow = true; base.receiveShadow = true; col.add(base);
+const eh = broken ? h * (0.42 + Math.random() * 0.28) : h;
+const lower = new THREE.Mesh(new THREE.CylinderGeometry(1.18, 1.32, eh * 0.54, 16), materials.stone); lower.position.y = 0.9 + eh * 0.27; lower.castShadow = true; col.add(lower);
+const upper = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.18, eh * 0.46, 16), materials.stoneLight); upper.position.y = 0.9 + eh * 0.54 + eh * 0.23; upper.castShadow = true; col.add(upper);
+for (let i = 0; i < 6; i++) {
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.06, 8, 18), materials.stoneDark);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 1.4 + i * (eh / 6.3);
+  col.add(ring);
+}
 if (!broken) {
-const cap = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.0, 3.0), materials.stoneDark); cap.position.y = 0.9 + eh + 0.5; cap.castShadow = true; col.add(cap);
-const snow = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.2, 3.05), materials.snow); snow.position.y = 0.9 + eh + 1.05; col.add(snow);
+const cap = new THREE.Mesh(new THREE.BoxGeometry(3.15, 1.05, 3.15), materials.stoneDark); cap.position.y = 0.95 + eh + 0.52; cap.castShadow = true; col.add(cap);
+const snow = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.18, 3.2), materials.snow); snow.position.y = 0.95 + eh + 1.08; col.add(snow);
 } else {
-const jag = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 2.0), materials.stone); jag.position.y = 0.9 + eh + 0.2; jag.rotation.set(0.2, 0.4, 0.15); jag.castShadow = true; col.add(jag);
+const jag = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.9, 2.1), materials.stoneLight); jag.position.y = 1.0 + eh + 0.18; jag.rotation.set(0.22, 0.4, 0.12); jag.castShadow = true; col.add(jag);
 }
 return col;
 }
 
 function makeRuinStatue(materials) {
 const s = new THREE.Group();
-const ped = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.4, 4.5), materials.stoneDark); ped.position.y = 1.2; ped.castShadow = true; s.add(ped);
-const robe = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.4, 5.5, 10), materials.stone); robe.position.y = 5.1; robe.castShadow = true; s.add(robe);
-const chest = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 2), materials.stone); chest.position.y = 7.4; s.add(chest);
-const head = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.8, 1.4), materials.stone); head.position.y = 9.2; head.castShadow = true; s.add(head);
-const crown = new THREE.Mesh(new THREE.ConeGeometry(1.0, 1.2, 4), materials.gold); crown.position.y = 10.5; s.add(crown);
-for (const sx of [-1, 1]) { const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 4, 8), materials.stone); arm.position.set(sx * 2.0, 6.2, 0.4); arm.rotation.x = 0.5; arm.castShadow = true; s.add(arm); }
-const snow = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.2, 2.1), materials.snow); snow.position.y = 8.45; s.add(snow);
+const ped = new THREE.Mesh(new THREE.BoxGeometry(4.8, 2.6, 4.8), materials.stoneDark); ped.position.y = 1.3; ped.castShadow = true; s.add(ped);
+const feet = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.8, 1.8), materials.stone); feet.position.y = 2.7; s.add(feet);
+const robe = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.55, 5.8, 12), materials.stone); robe.position.y = 5.7; robe.castShadow = true; s.add(robe);
+const chest = new THREE.Mesh(new THREE.BoxGeometry(3.1, 2.1, 2.2), materials.stoneLight); chest.position.y = 8.0; chest.castShadow = true; s.add(chest);
+const head = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.95, 1.45), materials.stone); head.position.y = 9.95; head.castShadow = true; s.add(head);
+const crown = new THREE.Mesh(new THREE.ConeGeometry(1.08, 1.35, 4), materials.gold); crown.position.y = 11.35; crown.castShadow = true; s.add(crown);
+for (const sx of [-1, 1]) {
+  const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.9, 1.0), materials.stoneLight); shoulder.position.set(sx * 1.85, 8.0, 0.1); s.add(shoulder);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.58, 4.4, 8), materials.stone); arm.position.set(sx * 2.15, 6.7, 0.45); arm.rotation.x = 0.58; arm.castShadow = true; s.add(arm);
+}
+const snow = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.2, 2.2), materials.snow); snow.position.y = 8.95; s.add(snow);
 return s;
+}
+
+function makeRuinObelisk(materials) {
+const g = new THREE.Group();
+const base = new THREE.Mesh(new THREE.BoxGeometry(4.0, 1.3, 4.0), materials.stoneDark); base.position.y = 0.65; base.castShadow = true; g.add(base);
+const shaft = new THREE.Mesh(new THREE.BoxGeometry(2.0, 9.6, 2.0), materials.stoneLight); shaft.position.y = 6.1; shaft.castShadow = true; g.add(shaft);
+const top = new THREE.Mesh(new THREE.ConeGeometry(1.45, 2.2, 4), materials.gold); top.position.y = 12.0; top.rotation.y = Math.PI / 4; top.castShadow = true; g.add(top);
+return g;
+}
+
+function makeRuinWallSection(materials) {
+const g = new THREE.Group();
+const wall = new THREE.Mesh(new THREE.BoxGeometry(12.0, 6.8, 2.6), materials.stone); wall.position.y = 3.4; wall.castShadow = true; g.add(wall);
+const cap = new THREE.Mesh(new THREE.BoxGeometry(12.6, 0.7, 3.0), materials.stoneDark); cap.position.y = 6.95; cap.castShadow = true; g.add(cap);
+const snow = new THREE.Mesh(new THREE.BoxGeometry(12.7, 0.16, 3.06), materials.snow); snow.position.y = 7.40; g.add(snow);
+for (const x of [-4.1, 0, 4.1]) {
+  const pil = new THREE.Mesh(new THREE.BoxGeometry(1.15, 7.6, 2.9), materials.stoneDark); pil.position.set(x, 3.8, 0); pil.castShadow = true; g.add(pil);
+}
+const opening = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.9, 3.0), materials.stoneLight); opening.position.set(0, 1.75, 0); opening.visible = false; g.add(opening);
+return g;
 }
 
 function makeRuinGate(materials) {
 const gate = new THREE.Group();
 for (const sx of [-1, 1]) {
-const pylon = new THREE.Mesh(new THREE.BoxGeometry(4.5, 19, 5.5), materials.stone); pylon.position.set(sx * 12, 9.5, 0); pylon.castShadow = true; gate.add(pylon);
-const trim = new THREE.Mesh(new THREE.BoxGeometry(5, 1, 6), materials.gold); trim.position.set(sx * 12, 19.6, 0); gate.add(trim);
+  const pylon = new THREE.Mesh(new THREE.BoxGeometry(5.2, 21, 6.1), materials.stone); pylon.position.set(sx * 22.8, 10.5, 0); pylon.castShadow = true; gate.add(pylon);
+  const inset = new THREE.Mesh(new THREE.BoxGeometry(4.0, 11.5, 0.24), materials.stoneDark); inset.position.set(sx * 22.8, 11, 3.15); gate.add(inset);
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(5.9, 1.1, 6.6), materials.gold); trim.position.set(sx * 22.8, 21.35, 0); gate.add(trim);
 }
-const lintel = new THREE.Mesh(new THREE.BoxGeometry(30, 3.2, 5.5), materials.stoneDark); lintel.position.y = 21; lintel.castShadow = true; gate.add(lintel);
-const snow = new THREE.Mesh(new THREE.BoxGeometry(30.5, 0.25, 6), materials.snow); snow.position.y = 22.7; gate.add(snow);
-const banner = new THREE.Mesh(new THREE.PlaneGeometry(3, 7), materials.banner); banner.position.set(0, 16, 2.9); gate.add(banner);
+const lintel = new THREE.Mesh(new THREE.BoxGeometry(51.6, 3.6, 6.2), materials.stoneDark); lintel.position.y = 22.35; lintel.castShadow = true; gate.add(lintel);
+const frieze = new THREE.Mesh(new THREE.BoxGeometry(42.0, 1.0, 0.34), materials.gold); frieze.position.set(0, 21.6, 3.28); gate.add(frieze);
+const snow = new THREE.Mesh(new THREE.BoxGeometry(51.9, 0.24, 6.5), materials.snow); snow.position.y = 24.15; gate.add(snow);
+for (const sx of [-1, 1]) {
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 8.0), materials.banner); banner.position.set(sx * 14.8, 16.0, 3.2); gate.add(banner);
+}
 return gate;
+}
+
+function makeRuinTempleFacade(materials) {
+const t = new THREE.Group();
+const podium = new THREE.Mesh(new THREE.BoxGeometry(18.0, 2.2, 12.0), materials.stoneDark); podium.position.y = 1.1; podium.castShadow = true; t.add(podium);
+for (let i = 0; i < 5; i++) {
+  const step = new THREE.Mesh(new THREE.BoxGeometry(8.5 - i * 1.1, 0.38, 7.8), materials.stone);
+  step.position.set(8.5 + i * 0.65, 0.22 + i * 0.34, 0);
+  step.castShadow = true;
+  t.add(step);
+}
+for (let i = 0; i < 4; i++) {
+  const col = makeRuinColumn(materials, 8.8, false);
+  col.scale.setScalar(0.72);
+  col.position.set(-4.8 + i * 3.2, 2.2, 0);
+  t.add(col);
+}
+const arch = new THREE.Mesh(new THREE.BoxGeometry(15.2, 1.2, 4.4), materials.stoneDark); arch.position.set(0, 11.2, 0); arch.castShadow = true; t.add(arch);
+const ped = new THREE.Mesh(new THREE.ConeGeometry(8.8, 3.0, 3), materials.stoneLight); ped.rotation.z = Math.PI / 2; ped.rotation.y = Math.PI / 2; ped.position.set(0, 13.4, 0); ped.castShadow = true; t.add(ped);
+const snow = new THREE.Mesh(new THREE.BoxGeometry(15.6, 0.18, 4.5), materials.snow); snow.position.set(0, 11.86, 0); t.add(snow);
+return t;
 }
 
 function makeRuinBrazier(materials) {
 const b = new THREE.Group();
-const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.7, 2.6, 8), materials.stoneDark); stand.position.y = 1.3; stand.castShadow = true; b.add(stand);
-const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.5, 0.8, 12), materials.gold); bowl.position.y = 2.8; b.add(bowl);
-const flame = new THREE.Mesh(new THREE.ConeGeometry(0.8, 1.9, 8), materials.flame); flame.position.y = 3.9; flame.frustumCulled = false; b.add(flame);
+const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.74, 2.8, 8), materials.stoneDark); stand.position.y = 1.4; stand.castShadow = true; b.add(stand);
+const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.18, 0.55, 0.88, 12), materials.gold); bowl.position.y = 2.98; bowl.castShadow = true; b.add(bowl);
+const flame = new THREE.Mesh(new THREE.ConeGeometry(0.86, 2.0, 8), materials.flame); flame.position.y = 4.02; flame.frustumCulled = false; b.add(flame);
+const emberPos = [];
+for (let i = 0; i < 18; i++) emberPos.push((Math.random() - 0.5) * 0.8, 3.6 + Math.random() * 1.8, (Math.random() - 0.5) * 0.8);
+const eg = new THREE.BufferGeometry();
+eg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(emberPos), 3));
+const emb = new THREE.Points(eg, materials.ember); emb.frustumCulled = false; b.add(emb);
 return b;
 }
 
@@ -6368,80 +8052,156 @@ function createRuinsChunk(materials) {
 const chunk = new THREE.Group();
 const dummy = new THREE.Object3D();
 
-// --- Zemin: taş döşeme (derzli) + kar lekeleri ---
-const g = new THREE.PlaneGeometry(150, 400, 30, 100);
+// --- Zemin: merkezde eski taş yol, yanlarda karlı yükseltiler ve harabe terasları ---
+const g = new THREE.PlaneGeometry(180, 400, 34, 100);
 const p = g.attributes.position;
 const cols = new Float32Array(p.count * 3); const c = new THREE.Color();
 for (let i = 0; i < p.count; i++) {
-const x = p.getX(i), z = p.getY(i); const nz = (z + 200) / 25;
-let h = Math.sin(z * 0.04) * 0.05 + Math.sin(x * 0.25) * 0.03;
-if (Math.abs(x) > 22) h += (Math.abs(x) - 22) * 0.04;
-p.setZ(i, h);
-const grid = (Math.abs(Math.sin(x * 0.5)) < 0.12 || Math.abs(Math.sin(z * 0.5)) < 0.12) ? 0.82 : 1.0;
-const snow = cFbm(x * 0.04, nz, 4.4) > 0.55;
-let r, gg, b;
-if (snow) { r = 0.9; gg = 0.93; b = 0.97; }
-else { const base = 0.62 * grid; r = base * 0.98; gg = base * 0.92; b = base * 0.78; }
-c.setRGB(r, gg, b); cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+  const x = p.getX(i), z = p.getY(i);
+  const nz = (z + 200) / 36;
+  const pathMask = Math.max(0, 1 - Math.abs(x) / 15.5);
+  const terrace = Math.max(0, (Math.abs(x) - 22) / 26);
+  let h = Math.sin(z * 0.045) * 0.06 + Math.sin(x * 0.22 + z * 0.02) * 0.04;
+  h += terrace * 0.9 + Math.sin(x * 0.09 + z * 0.05) * 0.15 * terrace;
+  h -= pathMask * 0.08;
+  p.setZ(i, h);
+
+  const lineX = Math.abs(Math.sin((x + 2) * 0.62));
+  const lineZ = Math.abs(Math.sin((z + 4) * 0.40));
+  const seam = (lineX < 0.11 || lineZ < 0.09) ? 0.78 : 1.0;
+  const snowPatch = cFbm(x * 0.045 + 4, nz, 4.4) > 0.58;
+  let r, gg, b;
+  if (pathMask > 0.18) {
+    const base = 0.68 * seam - pathMask * 0.05;
+    if (snowPatch && pathMask < 0.55) { r = 0.89; gg = 0.92; b = 0.96; }
+    else { r = base * 1.00; gg = base * 0.93; b = base * 0.80; }
+  } else {
+    if (snowPatch) { r = 0.90; gg = 0.94; b = 0.98; }
+    else { const base = 0.56 + terrace * 0.08; r = base * 0.93; gg = base * 0.88; b = base * 0.76; }
+  }
+  c.setRGB(r, gg, b); cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
 }
 g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); p.needsUpdate = true; g.computeVertexNormals();
 const ground = new THREE.Mesh(g, materials.ground); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; chunk.add(ground);
 
-// --- Kolonad: yolun iki yanında dev sütun sırası (klonlanır) ---
-const colBases = [makeRuinColumn(materials, 9, false), makeRuinColumn(materials, 11.5, false), makeRuinColumn(materials, 7, true)];
-for (const side of [-1, 1]) for (let i = 0; i < 6; i++) {
-const b = colBases[Math.floor(Math.random() * colBases.length)].clone();
-b.position.set(side * 17, 0, -190 + i * 64 + (Math.random() - 0.5) * 10);
-b.rotation.y = Math.random() * 0.12;
-b.scale.setScalar(0.9 + Math.random() * 0.4);
-chunk.add(b);
-}
-// devrik sütunlar (yatan)
-for (let i = 0; i < 3; i++) {
-const side = i % 2 ? 1 : -1;
-const fallen = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.1, 8 + Math.random() * 4, 12), materials.stone);
-fallen.rotation.z = Math.PI / 2; fallen.rotation.y = Math.random() * Math.PI;
-fallen.position.set(side * (20 + Math.random() * 8), 1.0, (Math.random() - 0.5) * 360); fallen.castShadow = true; chunk.add(fallen);
+// Yol kenarı teras duvarları
+for (const side of [-1, 1]) {
+  const terraceWall = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.5, 396), materials.stoneDark);
+  terraceWall.position.set(side * 24.8, 0.78, 0);
+  terraceWall.castShadow = true; terraceWall.receiveShadow = true;
+  chunk.add(terraceWall);
+  const terraceSnow = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.16, 396), materials.snow);
+  terraceSnow.position.set(side * 24.8, 1.60, 0);
+  chunk.add(terraceSnow);
 }
 
-// --- Kolosal muhafız heykelleri ---
+// Sütun sıraları: daha sık ve görkemli kolonad
+const colBases = [makeRuinColumn(materials, 8.8, false), makeRuinColumn(materials, 10.8, false), makeRuinColumn(materials, 7.2, true)];
+for (const side of [-1, 1]) {
+  for (let i = 0; i < 8; i++) {
+    const b = colBases[Math.floor(Math.random() * colBases.length)].clone();
+    b.position.set(side * (28.8 + (i % 2) * 1.2), 0, -188 + i * 52 + (Math.random() - 0.5) * 8);
+    b.rotation.y = (Math.random() - 0.5) * 0.18;
+    b.scale.setScalar(0.92 + Math.random() * 0.34);
+    chunk.add(b);
+  }
+}
+
+// Devrik sütunlar ve kırık bloklar
+for (let i = 0; i < 5; i++) {
+  const side = i % 2 ? 1 : -1;
+  const len = 8 + Math.random() * 5;
+  const fallen = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.16, len, 14), i % 2 ? materials.stone : materials.stoneLight);
+  fallen.rotation.z = Math.PI / 2; fallen.rotation.y = Math.random() * Math.PI;
+  fallen.position.set(side * (33 + Math.random() * 14), 1.0, -160 + i * 72 + (Math.random() - 0.5) * 30);
+  fallen.castShadow = true; fallen.receiveShadow = true; chunk.add(fallen);
+}
+
+// Büyük yan tapınak cepheleri
+for (const side of [-1, 1]) {
+  for (const z of [-130, 105]) {
+    const temple = makeRuinTempleFacade(materials);
+    temple.position.set(side * 40, 0, z);
+    temple.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+    temple.scale.setScalar(0.95 + Math.random() * 0.12);
+    chunk.add(temple);
+  }
+}
+
+// Kolosal muhafız heykelleri
 const statueBase = makeRuinStatue(materials);
-for (let i = 0; i < 2; i++) {
-const side = i % 2 ? 1 : -1;
-const st = statueBase.clone();
-st.position.set(side * 26, 0, -80 + i * 160);
-st.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
-st.scale.setScalar(1.0 + Math.random() * 0.3);
-chunk.add(st);
+for (let i = 0; i < 4; i++) {
+  const side = i % 2 ? 1 : -1;
+  const st = statueBase.clone();
+  st.position.set(side * 32, 0, -150 + i * 100);
+  st.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+  st.scale.setScalar(0.92 + Math.random() * 0.20);
+  chunk.add(st);
 }
 
-// --- Dev anıtsal kapı (ara sıra, yolun üstünden geçilir) ---
-if (Math.random() < 0.5) {
-const gate = makeRuinGate(materials);
-gate.position.set(0, 0, -100 + Math.random() * 200);
-chunk.add(gate);
+// Obeliskler ve monument axis
+for (const side of [-1, 1]) {
+  for (const z of [-165, -35, 90, 185]) {
+    const ob = makeRuinObelisk(materials);
+    ob.position.set(side * 28.5, 0, z);
+    ob.scale.setScalar(0.88 + Math.random() * 0.18);
+    chunk.add(ob);
+  }
 }
 
-// --- Ateş mangalları (yanan alev) ---
-for (let i = 0; i < 6; i++) {
-const side = i % 2 ? 1 : -1;
-const br = makeRuinBrazier(materials);
-br.position.set(side * 14.5, 0, -180 + i * 72);
-chunk.add(br);
+// Ana anıtsal kapı + ikinci daha küçük kapı
+const gate1 = makeRuinGate(materials);
+gate1.position.set(0, 0, -40);
+chunk.add(gate1);
+const gate2 = makeRuinGate(materials);
+gate2.scale.set(0.82, 0.82, 0.82);
+gate2.position.set(0, 0, 145);
+chunk.add(gate2);
+
+// Yan duvar parçaları ve avlu hissi
+for (const side of [-1, 1]) {
+  for (const z of [-170, -95, -20, 58, 146]) {
+    const wall = makeRuinWallSection(materials);
+    wall.position.set(side * 39.5, 0, z);
+    wall.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+    wall.scale.setScalar(0.8 + Math.random() * 0.16);
+    chunk.add(wall);
+  }
 }
 
-// --- Moloz (instanced) ---
-const rubble = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.8, 1.2), materials.stoneDark, 30);
-for (let i = 0; i < 30; i++) {
-const side = i % 2 ? 1 : -1;
-dummy.position.set(side * (15 + Math.random() * 30), 0.4, (Math.random() - 0.5) * 390);
-dummy.scale.set(0.6 + Math.random() * 1.6, 0.6 + Math.random() * 1.2, 0.6 + Math.random() * 1.6);
-dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random()); dummy.updateMatrix();
-rubble.setMatrixAt(i, dummy.matrix);
+// Braziers: pist kenarına ritmik dizim
+for (let i = 0; i < 10; i++) {
+  const side = i % 2 ? 1 : -1;
+  const br = makeRuinBrazier(materials);
+  br.position.set(side * 20.2, 0, -185 + i * 40);
+  chunk.add(br);
 }
-rubble.castShadow = true; rubble.frustumCulled = false; chunk.add(rubble);
 
-// --- Uzak karlı dağlar ---
+// Rubble fields / moloz
+const rubble = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.8, 1.2), materials.stoneDark, 54);
+for (let i = 0; i < 54; i++) {
+  const side = i % 2 ? 1 : -1;
+  dummy.position.set(side * (26 + Math.random() * 46), 0.4, -196 + Math.random() * 392);
+  dummy.scale.set(0.55 + Math.random() * 1.8, 0.55 + Math.random() * 1.2, 0.55 + Math.random() * 1.8);
+  dummy.rotation.set(Math.random() * 0.4, Math.random() * Math.PI, Math.random() * 0.4); dummy.updateMatrix();
+  rubble.setMatrixAt(i, dummy.matrix);
+}
+rubble.castShadow = true; rubble.receiveShadow = true; rubble.frustumCulled = false; chunk.add(rubble);
+
+// Büyük taş bloklar / basamak kümeleri
+for (let i = 0; i < 12; i++) {
+  const side = i % 2 ? 1 : -1;
+  const steps = new THREE.Group();
+  for (let s = 0; s < 3; s++) {
+    const blk = new THREE.Mesh(new THREE.BoxGeometry(3.8 - s * 0.6, 0.6, 2.8), s === 0 ? materials.stoneDark : materials.stone);
+    blk.position.set(s * 0.45, 0.3 + s * 0.58, 0); blk.castShadow = true; blk.receiveShadow = true; steps.add(blk);
+  }
+  steps.position.set(side * (31 + Math.random() * 15), 0, -180 + i * 32);
+  steps.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+  chunk.add(steps);
+}
+
+// Distant snowy mountains
 addBackdropMountains(chunk, materials.peak);
 return chunk;
 }
@@ -6449,105 +8209,345 @@ return chunk;
 // ===== JEOTERMAL / KAPLICA VADİSİ BIOME =====
 function createGeothermalBiomeMaterials() {
 return {
-ground: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
+ground: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96 }),
+packedSnow: new THREE.MeshStandardMaterial({ color: 0xeef6ff, roughness: 0.84 }),
 rock: new THREE.MeshStandardMaterial({ color: 0x2e2a2c, roughness: 0.98 }),
-snowCap: new THREE.MeshStandardMaterial({ color: 0xf2f7ff, roughness: 0.8 }),
-water: new THREE.MeshStandardMaterial({ color: 0x2fd6c8, emissive: 0x0e9c93, emissiveIntensity: 0.85, metalness: 0.2, roughness: 0.12, side: THREE.DoubleSide }),
-mineral: new THREE.MeshStandardMaterial({ color: 0xe7e0cf, roughness: 0.85 }),
-crack: new THREE.MeshStandardMaterial({ color: 0xff7a2a, emissive: 0xff5a1a, emissiveIntensity: 1.3, roughness: 0.6 }),
-steam: new THREE.PointsMaterial({ color: 0xffffff, size: 4.0, map: createSoftCloudTexture(), transparent: true, opacity: 0.4, depthWrite: false }),
+rockDark: new THREE.MeshStandardMaterial({ color: 0x161719, roughness: 0.95, metalness: 0.05 }),
+basalt: new THREE.MeshStandardMaterial({ color: 0x24272b, roughness: 0.92, metalness: 0.08 }),
+snowCap: new THREE.MeshStandardMaterial({ color: 0xf2f7ff, roughness: 0.82 }),
+wetMud: new THREE.MeshStandardMaterial({ color: 0x4a3a30, roughness: 0.72, metalness: 0.02 }),
+water: new THREE.MeshStandardMaterial({ color: 0x2fd6c8, emissive: 0x0e9c93, emissiveIntensity: 0.95, metalness: 0.18, roughness: 0.08, side: THREE.DoubleSide }),
+waterDeep: new THREE.MeshStandardMaterial({ color: 0x097c86, emissive: 0x075d69, emissiveIntensity: 0.55, metalness: 0.12, roughness: 0.12, side: THREE.DoubleSide }),
+mineral: new THREE.MeshStandardMaterial({ color: 0xe7e0cf, roughness: 0.86 }),
+mineralWet: new THREE.MeshStandardMaterial({ color: 0xd0c2a8, roughness: 0.62, metalness: 0.03 }),
+sulfur: new THREE.MeshStandardMaterial({ color: 0xd7b941, emissive: 0x7c5a00, emissiveIntensity: 0.20, roughness: 0.88 }),
+algae: new THREE.MeshStandardMaterial({ color: 0x4f7f5c, roughness: 0.9 }),
+crack: new THREE.MeshStandardMaterial({ color: 0xff7a2a, emissive: 0xff5a1a, emissiveIntensity: 1.45, roughness: 0.55 }),
+steam: new THREE.PointsMaterial({ color: 0xffffff, size: 3.8, map: createSoftCloudTexture(), transparent: true, opacity: 0.42, depthWrite: false }),
+steamSoft: new THREE.MeshBasicMaterial({ color: 0xeefcff, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }),
+wood: new THREE.MeshStandardMaterial({ color: 0x5b3f2b, roughness: 0.92 }),
 peak: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 })
 };
+}
+
+function addGeoHotPool(chunk, materials, x, z, r, sx, sz, steamPts) {
+const mineralBase = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.18, r * 1.34, 0.30, 34), materials.mineralWet);
+mineralBase.position.set(x, 0.07, z);
+mineralBase.scale.set(sx, 1, sz);
+mineralBase.castShadow = true;
+mineralBase.receiveShadow = true;
+chunk.add(mineralBase);
+
+const water = new THREE.Mesh(new THREE.CircleGeometry(r, 36), materials.water);
+water.rotation.x = -Math.PI / 2;
+water.position.set(x, 0.245, z);
+water.scale.set(sx, sz, 1);
+water.receiveShadow = true;
+chunk.add(water);
+
+const center = new THREE.Mesh(new THREE.CircleGeometry(r * 0.56, 32), materials.waterDeep);
+center.rotation.x = -Math.PI / 2;
+center.position.set(x, 0.255, z);
+center.scale.set(sx * 0.92, sz * 0.92, 1);
+chunk.add(center);
+
+for (let ring = 0; ring < 3; ring++) {
+const rim = new THREE.Mesh(new THREE.TorusGeometry(r * (1.02 + ring * 0.18), 0.12 + ring * 0.035, 8, 42), ring === 0 ? materials.mineral : materials.mineralWet);
+rim.rotation.x = Math.PI / 2;
+rim.position.set(x, 0.28 + ring * 0.035, z);
+rim.scale.set(sx, sz, 1);
+rim.castShadow = true;
+chunk.add(rim);
+}
+
+for (let k = 0; k < 5; k++) {
+const patch = new THREE.Mesh(new THREE.CircleGeometry(r * (0.16 + Math.random() * 0.16), 14), k % 2 ? materials.sulfur : materials.algae);
+patch.rotation.x = -Math.PI / 2;
+const a = Math.random() * Math.PI * 2;
+patch.position.set(x + Math.cos(a) * r * sx * (0.65 + Math.random() * 0.45), 0.305, z + Math.sin(a) * r * sz * (0.65 + Math.random() * 0.45));
+patch.scale.set(1.2, 0.55, 1);
+chunk.add(patch);
+}
+
+const puffs = 16 + Math.floor(Math.random() * 18);
+for (let s = 0; s < puffs; s++) {
+const a = Math.random() * Math.PI * 2;
+const rr = Math.random() * r * 1.05;
+steamPts.push(x + Math.cos(a) * rr * sx, 0.55 + Math.random() * 9.5, z + Math.sin(a) * rr * sz);
+}
+}
+
+function addGeoTerrace(chunk, materials, x, z, side, steamPts) {
+const group = new THREE.Group();
+for (let l = 0; l < 5; l++) {
+const radius = 4.6 - l * 0.58;
+const level = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.86, radius, 0.32, 34), materials.mineral);
+level.position.set(side * l * 1.12, l * 0.36, l * 1.24);
+level.scale.set(1.25, 1, 0.72);
+level.castShadow = true;
+level.receiveShadow = true;
+group.add(level);
+
+const pool = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.56, 28), l % 2 ? materials.waterDeep : materials.water);
+pool.rotation.x = -Math.PI / 2;
+pool.position.set(side * l * 1.12, l * 0.36 + 0.18, l * 1.24);
+pool.scale.set(1.24, 0.62, 1);
+group.add(pool);
+
+for (let s = 0; s < 7; s++) {
+steamPts.push(x + side * l * 1.12 + (Math.random() - 0.5) * radius * 1.1, 0.7 + l * 0.42 + Math.random() * 6, z + l * 1.24 + (Math.random() - 0.5) * radius * 0.75);
+}
+}
+group.position.set(x, 0.08, z);
+group.rotation.y = side * (0.14 + Math.random() * 0.25);
+chunk.add(group);
+}
+
+function addGeoGeyser(chunk, materials, x, z, steamPts) {
+const basin = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.6, 0.32, 30), materials.mineralWet);
+basin.position.set(x, 0.10, z);
+basin.castShadow = true;
+basin.receiveShadow = true;
+chunk.add(basin);
+const water = new THREE.Mesh(new THREE.CircleGeometry(2.15, 28), materials.water);
+water.rotation.x = -Math.PI / 2;
+water.position.set(x, 0.31, z);
+chunk.add(water);
+
+const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.82, 11.5, 18, 1, true), materials.steamSoft.clone());
+jet.position.set(x, 5.7, z);
+jet.renderOrder = 4;
+chunk.add(jet);
+const plume = new THREE.Mesh(new THREE.SphereGeometry(2.35, 16, 10), materials.steamSoft.clone());
+plume.position.set(x, 11.7, z);
+plume.scale.set(1.4, 0.85, 1.15);
+plume.renderOrder = 4;
+chunk.add(plume);
+
+for (let s = 0; s < 70; s++) {
+const h = Math.random() * 18.0;
+const spread = 0.45 + h * 0.10;
+steamPts.push(x + (Math.random() - 0.5) * spread * 2.1, 0.8 + h, z + (Math.random() - 0.5) * spread * 2.1);
+}
+}
+
+function addGeoSteamVent(chunk, materials, x, z, steamPts) {
+const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.35, 0.22, 16), materials.rockDark);
+vent.position.set(x, 0.15, z);
+vent.castShadow = true;
+chunk.add(vent);
+const glow = new THREE.Mesh(new THREE.CircleGeometry(0.75, 16), materials.crack);
+glow.rotation.x = -Math.PI / 2;
+glow.position.set(x, 0.29, z);
+chunk.add(glow);
+for (let i = 0; i < 18; i++) steamPts.push(x + (Math.random() - 0.5) * 1.6, 0.55 + Math.random() * 8.8, z + (Math.random() - 0.5) * 1.6);
+}
+
+function addGeoWoodFence(chunk, materials, side, z) {
+const fence = new THREE.Group();
+for (let i = 0; i < 5; i++) {
+const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.05, 0.18), materials.wood);
+post.position.set(side * (19.2 + i * 1.55), 0.55, z + Math.sin(i * 0.7) * 0.25);
+post.castShadow = true;
+fence.add(post);
+}
+for (let r = 0; r < 2; r++) {
+const rail = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.15, 0.15), materials.wood);
+rail.position.set(side * 22.4, 0.58 + r * 0.34, z + 0.05);
+rail.rotation.z = side * 0.02;
+rail.castShadow = true;
+fence.add(rail);
+}
+chunk.add(fence);
 }
 
 function createGeothermalChunk(materials) {
 const chunk = new THREE.Group();
 const dummy = new THREE.Object3D();
 
-// --- Zemin: kar + koyu mineral/çamur lekeleri (gürültüye göre) ---
-const g = new THREE.PlaneGeometry(170, 400, 28, 96);
+// --- Zemin: sıkıştırılmış kar yolu + çamurlu/mineral jeotermal yanlar ---
+const g = new THREE.PlaneGeometry(180, 420, 38, 118);
 const p = g.attributes.position;
-const cols = new Float32Array(p.count * 3); const c = new THREE.Color();
+const cols = new Float32Array(p.count * 3);
+const c = new THREE.Color();
 for (let i = 0; i < p.count; i++) {
 const x = p.getX(i), z = p.getY(i);
-const nz = (z + 200) / 25;
-let h = Math.sin(z * 0.05) * 0.05 + Math.sin(x * 0.2 + z * 0.03) * 0.04;
-if (Math.abs(x) > 24) h += (Math.abs(x) - 24) * 0.05;
+const sideAbs = Math.abs(x);
+const nz = (z + 210) / 31;
+let h = Math.sin(z * 0.035) * 0.045 + Math.sin(x * 0.14 + z * 0.025) * 0.055;
+if (sideAbs > 23) h += Math.pow((sideAbs - 23) * 0.045, 1.15);
+if (sideAbs > 46) h += (sideAbs - 46) * 0.030;
 p.setZ(i, h);
-const mud = cFbm(x * 0.05, nz, 7.7);
-if (mud < 0.42 && Math.abs(x) > 6) { const m = 0.28 + mud * 0.22; c.setRGB(m, m * 0.86, m * 0.72); }
-else { const s = 0.86; c.setRGB(s, s + 0.02, Math.min(1, s + 0.05)); }
+
+const thermal = cFbm(x * 0.052, nz, 11.7);
+const pathBlend = Math.max(0, 1 - Math.max(0, sideAbs - 8) / 15);
+if (pathBlend > 0.12) {
+const s = 0.80 + pathBlend * 0.16 + Math.sin(z * 0.09) * 0.025;
+c.setRGB(s, Math.min(1, s + 0.025), Math.min(1, s + 0.07));
+} else if (thermal < 0.30) {
+c.setRGB(0.58, 0.51, 0.36); // sarımsı mineral kabuk
+} else if (thermal < 0.48) {
+c.setRGB(0.33, 0.27, 0.23); // ıslak volkanik çamur
+} else if (thermal > 0.76) {
+c.setRGB(0.74, 0.70, 0.60); // beyaz mineral tortu
+} else {
+const s = 0.72 + thermal * 0.16;
+c.setRGB(s, s + 0.015, Math.min(1, s + 0.045));
+}
 cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
 }
-g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); p.needsUpdate = true; g.computeVertexNormals();
-const ground = new THREE.Mesh(g, materials.ground); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; chunk.add(ground);
+g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+p.needsUpdate = true;
+g.computeVertexNormals();
+const ground = new THREE.Mesh(g, materials.ground);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+chunk.add(ground);
+
+// Hafif pist izi: oyuncunun gittiği yol kirli kar gibi dursun.
+for (let i = 0; i < 18; i++) {
+const z = -198 + i * 23.5;
+const track = new THREE.Mesh(new THREE.PlaneGeometry(10.5 + Math.sin(i) * 1.2, 12.0), materials.packedSnow);
+track.rotation.x = -Math.PI / 2;
+track.position.set(Math.sin(i * 0.7) * 0.45, 0.035, z);
+track.material.transparent = true;
+track.material.opacity = 0.32;
+track.receiveShadow = true;
+chunk.add(track);
+}
 
 const steamPts = [];
 
-// --- Kaplıca havuzları (turkuaz, parlayan) + mineral kenar + buhar ---
-for (let i = 0; i < 5; i++) {
-const side = i % 2 === 0 ? -1 : 1;
-const x = side * (20 + Math.random() * 26);
-const z = (Math.random() - 0.5) * 380;
-const r = 2.5 + Math.random() * 4;
-const water = new THREE.Mesh(new THREE.CircleGeometry(r, 22), materials.water);
-water.rotation.x = -Math.PI / 2; water.position.set(x, 0.08, z); chunk.add(water);
-const rim = new THREE.Mesh(new THREE.TorusGeometry(r + 0.3, 0.5, 7, 22), materials.mineral);
-rim.rotation.x = Math.PI / 2; rim.position.set(x, 0.2, z); rim.castShadow = true; chunk.add(rim);
-const puffs = 8 + Math.floor(Math.random() * 8);
-for (let s = 0; s < puffs; s++) steamPts.push(x + (Math.random() - 0.5) * r * 1.4, 0.5 + Math.random() * 8, z + (Math.random() - 0.5) * r * 1.4);
+// --- Yan sıcak su kanalları / mavi sıcak dere parçaları ---
+for (const side of [-1, 1]) {
+for (let i = 0; i < 7; i++) {
+const z = -185 + i * 60 + Math.random() * 12;
+const x = side * (17.5 + Math.random() * 6.0);
+const stream = new THREE.Mesh(new THREE.PlaneGeometry(2.2 + Math.random() * 1.2, 35 + Math.random() * 18), i % 2 ? materials.waterDeep : materials.water);
+stream.rotation.x = -Math.PI / 2;
+stream.rotation.z = side * (0.08 + Math.random() * 0.10);
+stream.position.set(x, 0.12, z);
+stream.receiveShadow = true;
+chunk.add(stream);
+for (let s = 0; s < 12; s++) steamPts.push(x + (Math.random() - 0.5) * 3.2, 0.45 + Math.random() * 5.5, z + (Math.random() - 0.5) * 28);
+}
 }
 
-// --- Gayzer (yüksek buhar sütunu) ---
-{
-const side = Math.random() > 0.5 ? 1 : -1;
-const x = side * (22 + Math.random() * 20);
-const z = (Math.random() - 0.5) * 360;
-const water = new THREE.Mesh(new THREE.CircleGeometry(1.6, 16), materials.water); water.rotation.x = -Math.PI / 2; water.position.set(x, 0.1, z); chunk.add(water);
-for (let s = 0; s < 26; s++) steamPts.push(x + (Math.random() - 0.5) * 2.2, 1 + s * 0.9, z + (Math.random() - 0.5) * 2.2);
-}
-
-// --- Fumarol: parlayan turuncu çatlaklar ---
+// --- Kaplıca havuzları (turkuaz, katmanlı mineral kenarlı) ---
 for (let i = 0; i < 8; i++) {
 const side = i % 2 === 0 ? -1 : 1;
-const x = side * (16 + Math.random() * 30);
-const z = (Math.random() - 0.5) * 380;
-const crack = new THREE.Mesh(new THREE.BoxGeometry(0.3 + Math.random() * 0.4, 0.05, 2 + Math.random() * 4), materials.crack);
-crack.position.set(x, 0.12, z); crack.rotation.y = Math.random() * Math.PI; chunk.add(crack);
+const x = side * (25 + Math.random() * 30);
+const z = -190 + Math.random() * 380;
+const r = 2.5 + Math.random() * 4.3;
+addGeoHotPool(chunk, materials, x, z, r, 1.0 + Math.random() * 0.55, 0.72 + Math.random() * 0.34, steamPts);
 }
 
-// --- Kar capli volkanik kayalar (instanced) ---
-const rockCount = 22;
+// --- Traverten / sinter terasları ---
+for (let t = 0; t < 5; t++) {
+const side = t % 2 === 0 ? 1 : -1;
+addGeoTerrace(chunk, materials, side * (33 + Math.random() * 18), -182 + t * 82 + Math.random() * 20, side, steamPts);
+}
+
+// --- Gayzerler: yüksek buhar sütunu ---
+addGeoGeyser(chunk, materials, -37 - Math.random() * 10, -112 + Math.random() * 70, steamPts);
+addGeoGeyser(chunk, materials, 36 + Math.random() * 12, 70 + Math.random() * 95, steamPts);
+
+// --- Fumarol / sıcak çatlaklar ---
+for (let i = 0; i < 16; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const x = side * (16 + Math.random() * 34);
+const z = -198 + Math.random() * 396;
+const crack = new THREE.Mesh(new THREE.BoxGeometry(0.22 + Math.random() * 0.38, 0.055, 2.5 + Math.random() * 5.0), materials.crack);
+crack.position.set(x, 0.16, z);
+crack.rotation.y = Math.random() * Math.PI;
+chunk.add(crack);
+if (i % 3 === 0) addGeoSteamVent(chunk, materials, x + side * (1.0 + Math.random()), z + (Math.random() - 0.5) * 4.0, steamPts);
+}
+
+// --- Sülfür / mineral lekeleri ---
+for (let i = 0; i < 32; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const patch = new THREE.Mesh(new THREE.CircleGeometry(0.75 + Math.random() * 1.9, 16), i % 3 === 0 ? materials.sulfur : materials.mineralWet);
+patch.rotation.x = -Math.PI / 2;
+patch.position.set(side * (15 + Math.random() * 42), 0.075, -200 + Math.random() * 400);
+patch.scale.set(1.4 + Math.random() * 1.2, 0.55 + Math.random() * 0.45, 1);
+patch.rotation.z = Math.random() * Math.PI;
+chunk.add(patch);
+}
+
+// --- Kar kaplı volkanik kayalar ---
+const rockCount = 46;
 const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), materials.rock, rockCount);
 const caps = new THREE.InstancedMesh(new THREE.SphereGeometry(0.55, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), materials.snowCap, rockCount);
 for (let i = 0; i < rockCount; i++) {
 const side = i % 2 === 0 ? -1 : 1;
-const x = side * (17 + Math.random() * 36);
-const z = (Math.random() - 0.5) * 388;
-const sc = 0.7 + Math.random() * 2.2;
-dummy.position.set(x, sc * 0.5, z); dummy.scale.set(sc * 1.2, sc, sc * 1.1); dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random()); dummy.updateMatrix(); rocks.setMatrixAt(i, dummy.matrix);
-dummy.position.set(x, sc * 1.0, z); dummy.scale.set(sc * 1.1, sc * 0.7, sc * 1.0); dummy.rotation.set(0, Math.random() * Math.PI, 0); dummy.updateMatrix(); caps.setMatrixAt(i, dummy.matrix);
+const x = side * (18 + Math.random() * 44);
+const z = -204 + Math.random() * 408;
+const sc = 0.55 + Math.random() * 2.7;
+dummy.position.set(x, sc * 0.50, z);
+dummy.scale.set(sc * (1.05 + Math.random() * 0.45), sc * (0.78 + Math.random() * 0.34), sc * (0.9 + Math.random() * 0.4));
+dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
+dummy.updateMatrix();
+rocks.setMatrixAt(i, dummy.matrix);
+dummy.position.set(x, sc * 0.95, z);
+dummy.scale.set(sc * 1.05, sc * 0.55, sc * 0.88);
+dummy.rotation.set(0, Math.random() * Math.PI, 0);
+dummy.updateMatrix();
+caps.setMatrixAt(i, dummy.matrix);
 }
-rocks.castShadow = true; rocks.frustumCulled = false; caps.frustumCulled = false; chunk.add(rocks, caps);
+rocks.castShadow = true;
+rocks.frustumCulled = false;
+caps.frustumCulled = false;
+chunk.add(rocks, caps);
 
-// --- Mineral teraslar (basamaklı travertan) ---
-for (let t = 0; t < 3; t++) {
-const side = Math.random() > 0.5 ? 1 : -1;
-const x = side * (28 + Math.random() * 18);
-const z = (Math.random() - 0.5) * 340;
-const terr = new THREE.Group();
-for (let l = 0; l < 4; l++) {
-const disc = new THREE.Mesh(new THREE.CylinderGeometry(4 - l * 0.8, 4.4 - l * 0.8, 0.5, 16), materials.mineral);
-disc.position.y = l * 0.5; disc.castShadow = true; terr.add(disc);
+// --- Basalt sütunları / volkanik duvar detayları ---
+const colCount = 54;
+const colGeo = new THREE.CylinderGeometry(0.75, 0.95, 1, 6);
+const basaltCols = new THREE.InstancedMesh(colGeo, materials.basalt, colCount);
+for (let i = 0; i < colCount; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const height = 2.4 + Math.random() * 7.5;
+const x = side * (49 + Math.random() * 24);
+const z = -205 + Math.random() * 410;
+dummy.position.set(x, height * 0.5, z);
+dummy.scale.set(0.65 + Math.random() * 0.65, height, 0.65 + Math.random() * 0.65);
+dummy.rotation.set(0, Math.random() * Math.PI, 0);
+dummy.updateMatrix();
+basaltCols.setMatrixAt(i, dummy.matrix);
 }
-terr.position.set(x, 0, z); chunk.add(terr);
+basaltCols.castShadow = true;
+basaltCols.frustumCulled = false;
+chunk.add(basaltCols);
+
+// --- Ahşap uyarı çitleri: sadece kenarda, oynanış yolunu kapatmaz ---
+for (let i = 0; i < 8; i++) addGeoWoodFence(chunk, materials, i % 2 ? 1 : -1, -185 + i * 54);
+
+// --- Uzak küçük volkan konileri ---
+for (const side of [-1, 1]) {
+for (let i = 0; i < 2; i++) {
+const volcano = new THREE.Group();
+const cone = new THREE.Mesh(new THREE.ConeGeometry(9 + Math.random() * 5, 15 + Math.random() * 9, 22), materials.rockDark);
+cone.position.y = 7.4;
+cone.castShadow = true;
+volcano.add(cone);
+const cap = new THREE.Mesh(new THREE.ConeGeometry(5.2, 3.6, 18), materials.snowCap);
+cap.position.y = 16.0;
+cap.castShadow = true;
+volcano.add(cap);
+volcano.position.set(side * (68 + Math.random() * 16), 0, -165 + i * 260 + Math.random() * 35);
+volcano.rotation.y = Math.random() * Math.PI;
+chunk.add(volcano);
+}
 }
 
-// --- Buhar (points) ---
+// --- Buhar noktaları ---
 if (steamPts.length) {
 const sg = new THREE.BufferGeometry();
 sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(steamPts), 3));
-const steam = new THREE.Points(sg, materials.steam); steam.frustumCulled = false; chunk.add(steam);
+const steam = new THREE.Points(sg, materials.steam);
+steam.frustumCulled = false;
+steam.renderOrder = 6;
+chunk.add(steam);
 }
 
 // --- Uzak karlı dağlar ---
@@ -6605,6 +8605,117 @@ lamp.position.set(0, 2.4, -len * 0.5 - 0.1); w.add(lamp);
 return w;
 }
 
+
+function addRailwayRealismDetails(chunk, materials, laneXs) {
+const dummy = new THREE.Object3D();
+
+// Ray aralarına küçük balast taşları: düz gri kutu hissi yerine gerçek demiryolu zemini.
+const stoneGeo = new THREE.DodecahedronGeometry(0.16, 0);
+const stoneCount = 260;
+const stones = new THREE.InstancedMesh(stoneGeo, materials.ballast, stoneCount);
+for (let i = 0; i < stoneCount; i++) {
+const lane = laneXs[Math.floor(Math.random() * laneXs.length)];
+const x = lane + (Math.random() - 0.5) * 5.4;
+const z = -196 + Math.random() * 392;
+const sc = 0.55 + Math.random() * 1.25;
+dummy.position.set(x, 0.34 + Math.random() * 0.04, z);
+dummy.scale.set(sc * 1.1, sc * 0.35, sc * 0.9);
+dummy.rotation.set(Math.random() * 0.25, Math.random() * Math.PI, Math.random() * 0.25);
+dummy.updateMatrix();
+stones.setMatrixAt(i, dummy.matrix);
+}
+stones.receiveShadow = true;
+stones.castShadow = true;
+stones.frustumCulled = false;
+chunk.add(stones);
+
+const plateGeo = new THREE.BoxGeometry(0.54, 0.055, 0.24);
+const plateCount = laneXs.length * 36 * 2;
+const plates = new THREE.InstancedMesh(plateGeo, materials.metal, plateCount);
+let pi = 0;
+for (const lx of laneXs) {
+  for (let i = 0; i < 36; i++) {
+    const z = -194 + i * 11.0;
+    for (const rx of [lx - 1.4, lx + 1.4]) {
+      dummy.position.set(rx, 0.47, z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      plates.setMatrixAt(pi++, dummy.matrix);
+    }
+  }
+}
+plates.frustumCulled = false;
+chunk.add(plates);
+
+for (const x of [-19.2, 19.2]) {
+const bank = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.55, 400), materials.snow);
+bank.position.set(x, 0.28, 0);
+bank.rotation.z = x < 0 ? -0.06 : 0.06;
+bank.receiveShadow = true;
+chunk.add(bank);
+}
+
+// Catenary / elektrik hattı direkleri ve teller. Daha da yukarı taşındı.
+const gantryCount = 7;
+for (let i = 0; i < gantryCount; i++) {
+const z = -190 + i * 63;
+const gantry = new THREE.Group();
+
+for (const x of [-18.2, 18.2]) {
+  const pole = new THREE.Mesh(new THREE.BoxGeometry(0.32, 13.8, 0.32), materials.metal);
+  pole.position.set(x, 6.9, z);
+  pole.castShadow = true;
+  gantry.add(pole);
+
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.10, 0.10), materials.metal);
+  arm.position.set(x * 0.90, 12.55, z);
+  gantry.add(arm);
+
+  const insulator = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.48, 0.22), materials.stone);
+  insulator.position.set(x * 0.90, 12.05, z);
+  gantry.add(insulator);
+}
+
+const beam = new THREE.Mesh(new THREE.BoxGeometry(38.6, 0.28, 0.32), materials.metal);
+beam.position.set(0, 13.45, z);
+beam.castShadow = true;
+gantry.add(beam);
+
+for (const lx of laneXs) {
+  const hanger = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.1, 0.08), materials.metal);
+  hanger.position.set(lx, 11.55, z);
+  gantry.add(hanger);
+}
+
+chunk.add(gantry);
+}
+
+for (const lx of laneXs) {
+const wire = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 400), materials.rail);
+wire.position.set(lx, 10.35, 0);
+wire.castShadow = false;
+chunk.add(wire);
+
+const messenger = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 400), materials.metal);
+messenger.position.set(lx, 11.95, 0);
+chunk.add(messenger);
+}
+
+for (let i = 0; i < 5; i++) {
+const side = i % 2 === 0 ? -1 : 1;
+const sign = new THREE.Group();
+const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.6, 0.16), materials.metal);
+post.position.y = 1.3;
+sign.add(post);
+const board = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.82, 0.08), i % 2 === 0 ? materials.signalRed : materials.signalGreen);
+board.position.y = 2.55;
+sign.add(board);
+sign.position.set(side * 21.6, 0, -170 + i * 82);
+chunk.add(sign);
+}
+}
+
 function createRailwayChunk(materials) {
 const chunk = new THREE.Group();
 const dummy = new THREE.Object3D();
@@ -6649,14 +8760,40 @@ sleepers.setMatrixAt(si++, dummy.matrix);
 }
 sleepers.receiveShadow = true; sleepers.frustumCulled = false; chunk.add(sleepers);
 
-// --- Park etmiş tren (bir yan şeritte): lokomotif + 2 vagon ---
-const trainLane = Math.random() > 0.5 ? 12 : -12;
+addRailwayRealismDetails(chunk, materials, laneXs);
+
+// --- Park etmiş tren (yan hatta / dekor): playable şeritleri kapatmaz ---
+const sidingSide = Math.random() > 0.5 ? 1 : -1;
+const sidingX = sidingSide * 29.0;
+const sidingBal = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.18, 210), materials.ballast);
+sidingBal.position.set(sidingX, 0.09, -18);
+sidingBal.receiveShadow = true;
+chunk.add(sidingBal);
+for (const rx of [sidingX - 1.4, sidingX + 1.4]) {
+const sidingRail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.20, 210), materials.rail);
+sidingRail.position.set(rx, 0.32, -18);
+sidingRail.castShadow = true;
+chunk.add(sidingRail);
+}
+const sidingSleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(4, 0.14, 0.42), materials.sleeper, 36);
+for (let i = 0; i < 36; i++) {
+dummy.position.set(sidingX, 0.2, -118 + i * 5.7);
+dummy.rotation.set(0, 0, 0);
+dummy.scale.set(1, 1, 1);
+dummy.updateMatrix();
+sidingSleepers.setMatrixAt(i, dummy.matrix);
+}
+sidingSleepers.frustumCulled = false;
+chunk.add(sidingSleepers);
+
 const loco = makeRailcar(materials, true);
-loco.position.set(trainLane, 0.3, -120 + Math.random() * 60);
+loco.position.set(sidingX, 0.3, -120 + Math.random() * 50);
+loco.rotation.y = Math.random() > 0.5 ? 0 : Math.PI;
 chunk.add(loco);
 for (let k = 1; k <= 2; k++) {
 const wagon = makeRailcar(materials, false);
-wagon.position.set(trainLane, 0.3, loco.position.z + k * 13);
+wagon.position.set(sidingX, 0.3, loco.position.z + k * 13);
+wagon.rotation.y = loco.rotation.y;
 chunk.add(wagon);
 }
 
@@ -7045,7 +9182,30 @@ return false;
 
 function triggerCanyonGapFall() {
 if (isCrashed) return;
+const fallLane = Math.max(-1, Math.min(1, Math.round(playerX / laneWidth)));
+const fallX = fallLane * laneWidth;
+currentLane = fallLane;
+playerX = fallX;
+playerY = basePlayerY;
+if (player) player.position.set(0, 0, 0);
+
+if (skeleton && skeleton.root) {
+skeleton.root.visible = true;
+if (skeleton.root.parent !== player && player) player.attach(skeleton.root);
+skeleton.root.position.set(fallX, basePlayerY, 0);
+skeleton.root.rotation.set(0, 0, 0);
+skeleton.root.updateMatrixWorld(true);
+}
+
+let fallWorldPos = new THREE.Vector3(fallX, basePlayerY, 0);
+if (skeleton && skeleton.root) {
+skeleton.root.getWorldPosition(fallWorldPos);
+scene.attach(skeleton.root); // world transform korunur; artık gerçekten sahnede aşağı düşecek.
+skeleton.root.updateMatrixWorld(true);
+}
+
 crashMode = 'fallGap';
+createCanyonFallFx(fallWorldPos);
 playSound('crash');
 triggerDismemberCrash('CANYON FALL');
 showTrickName('FALL!');
@@ -7811,7 +9971,7 @@ worldBiomes = [
   bg: new THREE.Color(0x86b6e0), fogColor: new THREE.Color(0xcfe2f2), fogNear: 70, fogFar: 720, exposure: 1.18,
   sun: new THREE.Color(0xffffff), sunInt: 2.2, hemiSky: new THREE.Color(0xcfe6ff), hemiGround: new THREE.Color(0x8a9aa6), hemiInt: 0.7, skyTop: new THREE.Color(0x2f7fc4) },
 { name: 'resort', makeChunk: () => createResortChunk(resortMats),
-  // Kayak merkezi: berrak şenlikli gün; slalom, telesiyej, lodge, snowcat.
+  // Kayak merkezi: profesyonel alp resort; temiz pist, liftler, lodge ve teknik tesisler.
   bg: new THREE.Color(0xa9cbe4), fogColor: new THREE.Color(0xd0e1ee), fogNear: 85, fogFar: 640, exposure: 1.14,
   sun: new THREE.Color(0xfff3d8), sunInt: 2.0, hemiSky: new THREE.Color(0xc8dff2), hemiGround: new THREE.Color(0x7e8894), hemiInt: 0.62, skyTop: new THREE.Color(0x2f6fb0) }
 ];
@@ -7821,8 +9981,8 @@ worldBiomes.forEach(b => { b.pool = []; });
 function getBiomeForIndex(idx) {
 const order = worldBiomes;
 if (START_IN_FOURTH_DEV_MODE) {
-const targetBiome = order.find(b => b.name === FOURTH_MAP_BIOME_NAME);
-if (targetBiome) return targetBiome;
+const startIdx = order.findIndex(b => b.name === FOURTH_MAP_BIOME_NAME);
+if (startIdx >= 0) return order[(startIdx + Math.floor(idx / SEGMENT_CHUNKS)) % order.length];
 }
 if (START_IN_FOREST_DEV_MODE) {
 const forestBiome = order.find(b => b.name === 'forest');
@@ -7886,7 +10046,7 @@ prewarmBiomes();
 let biomesPrewarmed = false;
 function prewarmBiomes() {
 if (biomesPrewarmed || !worldBiomes) return;
-if (START_IN_FOREST_DEV_MODE || START_IN_FOURTH_DEV_MODE) { biomesPrewarmed = true; return; }
+if (START_IN_FOREST_DEV_MODE) { biomesPrewarmed = true; return; }
 biomesPrewarmed = true;
 let i = 1;
 const step = () => {
@@ -8373,6 +10533,35 @@ if (obs.type === 'mineCart') {
 const wheels = obs.mesh.userData.wheels || [];
 for (const wheel of wheels) wheel.rotation.y -= activeSpeed * 0.24;
 obs.mesh.position.y = Math.sin(Date.now() * 0.012 + obs.mesh.position.z * 0.08) * 0.035;
+}
+if (obs.type === 'railwayOncomingTrain') {
+// Trenin gerçekten üzerimize gelmesi için normal obstacle hızına ekstra hız ekliyoruz.
+obs.mesh.position.z += activeSpeed * 0.82;
+const wheels = obs.mesh.userData.wheels || [];
+for (const wheel of wheels) wheel.rotation.y -= activeSpeed * 0.72;
+const pulse = 0.78 + Math.sin(Date.now() * 0.018) * 0.18;
+obs.mesh.traverse(child => {
+if (child.userData && child.userData.isTrainBeam && child.material) child.material.opacity = 0.18 + pulse * 0.13;
+if (child.userData && child.userData.isTrainLamp && child.material && child.material.color) child.scale.setScalar(0.95 + pulse * 0.16);
+if (child.userData && child.userData.isTrainSmoke && child.geometry) {
+  const pos = child.geometry.attributes.position.array;
+  for (let j = 0; j < pos.length; j += 3) {
+    pos[j + 1] += 0.008;
+    pos[j + 2] -= 0.035;
+    if (pos[j + 2] < -24) pos[j + 2] = -14 - Math.random() * 6;
+  }
+  child.geometry.attributes.position.needsUpdate = true;
+}
+});
+const zDist = obs.mesh.position.z - player.position.z;
+if (!obs.mesh.userData.horned && zDist < -80 && zDist > -155) {
+obs.mesh.userData.horned = true;
+playSound('close');
+shakeIntensity = Math.max(shakeIntensity, 0.16);
+}
+if (zDist > -65 && zDist < 8) {
+shakeIntensity = Math.max(shakeIntensity, 0.05);
+}
 }
 if (obs.type === 'coin') {
 obs.mesh.rotation.y += 0.1;
