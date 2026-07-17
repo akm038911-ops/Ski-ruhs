@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Başkanım'a Doğum Günü Macerası 🎂</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(160deg, #1a0b2e 0%, #3b1155 45%, #6d1b5e 100%);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center;
+    position: relative;
+  }
+
+  /* ---------- yüzen kalpler arka plan ---------- */
+  .float-heart {
+    position: fixed; bottom: -40px; font-size: 22px; opacity: .35;
+    animation: floatUp linear infinite; pointer-events: none; z-index: 0;
+  }
+  @keyframes floatUp {
+    from { transform: translateY(0) rotate(0deg); }
+    to   { transform: translateY(-110vh) rotate(360deg); }
+  }
+
+  /* ---------- ekranlar ---------- */
+  .screen {
+    display: none; position: relative; z-index: 2;
+    width: min(560px, 94vw); max-height: 96vh; overflow-y: auto;
+    padding: 28px 20px; scrollbar-width: thin;
+  }
+  .screen.active { display: block; animation: fadeIn .6s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(14px);} to { opacity: 1; transform: none;} }
+
+  h1 { font-size: clamp(1.5rem, 5.5vw, 2.2rem); margin-bottom: 12px; text-shadow: 0 2px 14px rgba(255,105,180,.55); }
+  h2 { font-size: clamp(1.2rem, 4.5vw, 1.6rem); margin-bottom: 10px; }
+  p  { line-height: 1.55; }
+
+  .btn {
+    display: inline-block; margin-top: 20px; padding: 14px 34px;
+    font-size: 1.05rem; font-weight: 700; color: #fff; border: none; cursor: pointer;
+    border-radius: 40px;
+    background: linear-gradient(135deg, #ff5e9c, #ff2e63);
+    box-shadow: 0 6px 22px rgba(255,46,99,.45);
+    transition: transform .15s ease;
+  }
+  .btn:active { transform: scale(.95); }
+  .btn.secondary { background: rgba(255,255,255,.14); box-shadow: none; }
+
+  /* ---------- intro: kapı ---------- */
+  .door {
+    width: 130px; height: 200px; margin: 26px auto 8px; position: relative;
+    background: linear-gradient(#8a4b2f, #6b3620);
+    border: 5px solid #4a2415; border-radius: 10px 10px 0 0;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    cursor: pointer; transition: transform .2s;
+  }
+  .door:active { transform: scale(.97); }
+  .door .knob { position: absolute; right: 12px; top: 95px; width: 14px; height: 14px; background: #ffd700; border-radius: 50%; box-shadow: 0 0 8px #ffd700; }
+  .door.knock { animation: knock .4s ease; }
+  @keyframes knock { 0%,100% { transform: rotate(0);} 25% { transform: rotate(-2deg);} 75% { transform: rotate(2deg);} }
+  .tik { font-size: 1.6rem; font-weight: 800; letter-spacing: 2px; min-height: 2.2rem; color: #ffd6e8; }
+
+  /* ---------- kalp yakalama ---------- */
+  #gameWrap { position: relative; margin: 14px auto 0; }
+  #gameCanvas {
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    border: 2px solid rgba(255,255,255,.25); border-radius: 16px;
+    touch-action: none; display: block; margin: 0 auto; max-width: 100%;
+  }
+  .hud { display: flex; justify-content: space-between; align-items: center; margin: 10px 4px 0; font-weight: 700; font-size: 1rem; }
+  .hud .warn { color: #ffd166; font-size: .85rem; font-weight: 500; }
+  #gameMsg { min-height: 1.4rem; margin-top: 8px; font-size: .95rem; color: #ffd6e8; }
+
+  /* ---------- quiz ---------- */
+  .q-progress { font-size: .85rem; opacity: .75; margin-bottom: 8px; }
+  .q-text { font-size: 1.15rem; font-weight: 700; margin: 10px 0 18px; }
+  .opt {
+    display: block; width: 100%; margin: 10px 0; padding: 14px;
+    font-size: 1rem; color: #fff; text-align: center; cursor: pointer;
+    background: rgba(255,255,255,.10); border: 2px solid rgba(255,255,255,.22);
+    border-radius: 14px; transition: background .15s, transform .1s;
+  }
+  .opt:active { transform: scale(.98); }
+  .opt.correct { background: rgba(46,204,113,.45); border-color: #2ecc71; }
+  .opt.wrong { background: rgba(231,76,60,.45); border-color: #e74c3c; animation: shake .35s; }
+  @keyframes shake { 0%,100% { transform: translateX(0);} 25% { transform: translateX(-7px);} 75% { transform: translateX(7px);} }
+  .reveal {
+    margin-top: 16px; padding: 16px; border-radius: 14px;
+    background: rgba(255,105,180,.18); border: 1px solid rgba(255,105,180,.5);
+    font-size: .98rem; line-height: 1.5; display: none;
+  }
+  .reveal.show { display: block; animation: fadeIn .5s ease; }
+  #quizToast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    background: #2b0f3a; border: 1px solid #ff5e9c; padding: 12px 20px;
+    border-radius: 30px; font-size: .95rem; z-index: 50;
+    opacity: 0; pointer-events: none; transition: opacity .3s; white-space: nowrap;
+  }
+  #quizToast.show { opacity: 1; }
+
+  /* ---------- pasta ---------- */
+  .cake-area { margin: 26px auto 6px; width: 260px; position: relative; }
+  .candles { display: flex; justify-content: center; gap: 26px; margin-bottom: -4px; position: relative; z-index: 3; }
+  .candle { width: 14px; height: 52px; border-radius: 4px; position: relative; cursor: pointer;
+    background: repeating-linear-gradient(45deg, #fff 0 6px, #ff5e9c 6px 12px); }
+  .flame {
+    position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+    width: 14px; height: 20px; background: radial-gradient(circle at 50% 70%, #ffdf6b, #ff9d2e 70%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    animation: flicker .35s infinite alternate;
+  }
+  @keyframes flicker { from { transform: translateX(-50%) scale(1);} to { transform: translateX(-52%) scale(1.15) rotate(-3deg);} }
+  .flame.out { display: none; }
+  .smoke { position: absolute; top: -26px; left: 50%; transform: translateX(-50%); font-size: 14px; opacity: 0; }
+  .smoke.show { animation: smokeUp 1.2s ease forwards; }
+  @keyframes smokeUp { 0% { opacity: .9; transform: translate(-50%, 0);} 100% { opacity: 0; transform: translate(-50%, -30px);} }
+  .layer { border-radius: 12px; position: relative; z-index: 2; margin: 0 auto; }
+  .layer.top { width: 150px; height: 52px; background: linear-gradient(#ff8fb8, #ff5e9c); }
+  .layer.mid { width: 200px; height: 58px; background: linear-gradient(#a86fd1, #7d4aa8); margin-top: -6px; }
+  .layer.bottom { width: 250px; height: 64px; background: linear-gradient(#ff8fb8, #ff5e9c); margin-top: -6px; }
+  .layer::before {
+    content: ""; position: absolute; top: -8px; left: 0; right: 0; height: 20px;
+    background: radial-gradient(circle 12px at 12px 8px, #fff8f0 98%, transparent) 0 0/24px 20px repeat-x;
+  }
+  .plate { width: 290px; height: 16px; background: linear-gradient(#e8e8f5, #b8b8d0); border-radius: 50%; margin: -4px auto 0; position: relative; z-index: 1; }
+  #cakeHint { margin-top: 18px; font-size: .95rem; color: #ffd6e8; min-height: 1.4rem; }
+
+  /* ---------- mektup ---------- */
+  .letter-card {
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.22);
+    border-radius: 20px; padding: 24px 20px; margin-top: 14px;
+    backdrop-filter: blur(6px); text-align: left;
+  }
+  #letterText { white-space: pre-wrap; font-size: 1.02rem; line-height: 1.65; min-height: 200px; }
+  .cursor { display: inline-block; width: 2px; height: 1.1em; background: #ff9dc4; vertical-align: text-bottom; animation: blink .8s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 20px; }
+  .stat {
+    background: rgba(255,105,180,.16); border: 1px solid rgba(255,105,180,.45);
+    border-radius: 14px; padding: 14px 8px;
+  }
+  .stat .num { font-size: 1.5rem; font-weight: 800; color: #ffb3d1; }
+  .stat .lbl { font-size: .8rem; opacity: .85; margin-top: 4px; }
+
+  /* ---------- konfeti ---------- */
+  .confetti { position: fixed; top: -20px; z-index: 40; pointer-events: none; animation: confFall linear forwards; }
+  @keyframes confFall { to { transform: translateY(110vh) rotate(720deg); opacity: .8; } }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ EKRAN 0: TIK TIK ═══════════ -->
+<section id="screen-intro" class="screen active">
+  <h1>17 Temmuz 2025, saat 08:05</h1>
+  <p>Bir sabah, telefonuna bir mesaj düştü...</p>
+  <div class="door" id="door"><div class="knob"></div></div>
+  <div class="tik" id="tikText"></div>
+  <p id="introHint" style="opacity:.75; font-size:.9rem; margin-top:10px;">Kapıya dokun 🚪</p>
+  <div id="introReveal" style="display:none;">
+    <p style="margin-top:14px;">O gün <b>"Tık tık"</b> diye çalınan kapıyı açtın ve<br>tam <b>1 yıllık</b> bir hikaye başladı...</p>
+    <p style="margin-top:10px;">Bugün ise çok özel bir gün 🎂</p>
+    <button class="btn" onclick="goTo('screen-game')">Maceraya Başla 💖</button>
+  </div>
+</section>
+
+<!-- ═══════════ EKRAN 1: KALP YAKALAMA ═══════════ -->
+<section id="screen-game" class="screen">
+  <h2>Bölüm 1: Çaycının Görevi 🍵</h2>
+  <p style="font-size:.92rem; opacity:.9;">Başkanım'ın çaycısı olarak görevin: düşen <b>kalpleri ❤️</b> ve <b>çayları 🍵</b> topla!<br>Ara sıra <b>Boğaç 🐱</b> da düşer, onu yakalamak bonus!<br>Ama dikkat — <b>şekerlerden 🍬 kaç</b>, biliyorsun çaya 10 şeker atma tehdidi ciddi 😤</p>
+  <div class="hud">
+    <span>Puan: <span id="score">0</span> / 25</span>
+    <span class="warn" id="lifeBox">🍬 hakkı: <span id="sugarLeft">3</span></span>
+  </div>
+  <div id="gameWrap"><canvas id="gameCanvas"></canvas></div>
+  <div id="gameMsg">Bardağı parmağınla ya da ok tuşlarıyla hareket ettir</div>
+  <button class="btn" id="startGameBtn" onclick="startGame()">Başla 🫖</button>
+</section>
+
+<!-- ═══════════ EKRAN 2: QUIZ ═══════════ -->
+<section id="screen-quiz" class="screen">
+  <h2>Bölüm 2: Bizi Ne Kadar Tanıyorsun? 🤔</h2>
+  <div class="q-progress" id="qProgress"></div>
+  <div class="q-text" id="qText"></div>
+  <div id="qOptions"></div>
+  <div class="reveal" id="qReveal"></div>
+  <button class="btn" id="qNext" style="display:none;" onclick="nextQuestion()">Devam ➜</button>
+</section>
+<div id="quizToast"></div>
+
+<!-- ═══════════ EKRAN 2.5: ANILAR ŞERİDİ ═══════════ -->
+<section id="screen-memories" class="screen">
+  <h2>Bölüm 3: Anılar Şeridi 🎞️</h2>
+  <div class="q-progress" id="memProgress"></div>
+  <div class="letter-card" id="memCard" style="text-align:center;">
+    <div style="font-size:.85rem; opacity:.7;" id="memDate"></div>
+    <div style="font-size:1.25rem; font-weight:800; margin:10px 0;" id="memTitle"></div>
+    <div style="line-height:1.6;" id="memText"></div>
+  </div>
+  <button class="btn" id="memNext" onclick="nextMemory()">Sonraki anı ➜</button>
+</section>
+
+<!-- ═══════════ EKRAN 3: PASTA ═══════════ -->
+<section id="screen-cake" class="screen">
+  <h2>Ve şimdi büyük an... 🎂</h2>
+  <p style="font-size:.95rem;">Mumlara tek tek dokunup üfle ve bir dilek tut! 🌬️</p>
+  <div class="cake-area">
+    <div class="candles" id="candles"></div>
+    <div class="layer top"></div>
+    <div class="layer mid"></div>
+    <div class="layer bottom"></div>
+    <div class="plate"></div>
+  </div>
+  <div id="cakeHint"></div>
+  <button class="btn" id="cakeNext" style="display:none;" onclick="goTo('screen-letter'); startLetter();">Dileğim gerçek olsun ✨</button>
+</section>
+
+<!-- ═══════════ EKRAN 4: MEKTUP ═══════════ -->
+<section id="screen-letter" class="screen">
+  <h1>İyi ki Doğdun Başkanım! 🎉</h1>
+  <div class="letter-card">
+    <div id="letterText"></div>
+  </div>
+  <div class="stats" id="statsBox" style="display:none;">
+    <div class="stat"><div class="num">3.161</div><div class="lbl">mesaj — 1 yılda 💬</div></div>
+    <div class="stat"><div class="num">99</div><div class="lbl">kere "Günaydın" 🌞</div></div>
+    <div class="stat"><div class="num">281</div><div class="lbl">kere "Başkanım" 👑</div></div>
+    <div class="stat"><div class="num">148</div><div class="lbl">mesaja ❤️ bıraktık</div></div>
+  </div>
+  <button class="btn" id="replayBtn" style="display:none;" onclick="location.reload()">Baştan Oyna 🔄</button>
+</section>
+
+<script>
+/* ═══════════ yardımcılar ═══════════ */
+function goTo(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (id === 'screen-quiz') showQuestion();
+  if (id === 'screen-memories') showMemory();
+  if (id === 'screen-cake') setupCake();
+}
+
+/* yüzen kalpler */
+(function () {
+  const emojis = ['💖','💜','💕','🌸','✨','💐'];
+  for (let i = 0; i < 16; i++) {
+    const el = document.createElement('div');
+    el.className = 'float-heart';
+    el.textContent = emojis[i % emojis.length];
+    el.style.left = Math.random() * 100 + 'vw';
+    el.style.animationDuration = (9 + Math.random() * 12) + 's';
+    el.style.animationDelay = -(Math.random() * 12) + 's';
+    el.style.fontSize = (14 + Math.random() * 18) + 'px';
+    document.body.appendChild(el);
+  }
+})();
+
+function confettiBurst(count = 90) {
+  const colors = ['#ff5e9c','#ffd166','#8ecae6','#b388ff','#7ae582','#ff8fab'];
+  for (let i = 0; i < count; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    const s = 6 + Math.random() * 8;
+    c.style.cssText = `left:${Math.random()*100}vw;width:${s}px;height:${s*0.6}px;` +
+      `background:${colors[i % colors.length]};animation-duration:${2 + Math.random()*2.5}s;` +
+      `animation-delay:${Math.random()*0.8}s;border-radius:${Math.random()>.5?'50%':'2px'}`;
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 6000);
+  }
+}
+
+/* ═══════════ EKRAN 0: kapı ═══════════ */
+let knocks = 0;
+document.getElementById('door').addEventListener('click', function () {
+  const door = this;
+  door.classList.remove('knock'); void door.offsetWidth; door.classList.add('knock');
+  knocks++;
+  const tik = document.getElementById('tikText');
+  if (knocks === 1) { tik.textContent = 'Tık...'; }
+  else if (knocks === 2) { tik.textContent = 'Tık tık! 🚪'; }
+  else if (knocks >= 3) {
+    tik.textContent = '— Kim o? 👀';
+    document.getElementById('introHint').style.display = 'none';
+    setTimeout(() => { document.getElementById('introReveal').style.display = 'block'; }, 700);
+  }
+});
+
+/* ═══════════ EKRAN 1: kalp yakalama ═══════════ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let W, H, cupX, items, score, sugars, gameRunning, spawnTimer, lastTime;
+const CUP = '🫖', TARGET = 25;
+
+function sizeCanvas() {
+  W = Math.min(500, window.innerWidth - 44);
+  H = Math.min(400, Math.floor(window.innerHeight * 0.45));
+  canvas.width = W; canvas.height = H;
+}
+sizeCanvas();
+window.addEventListener('resize', sizeCanvas);
+
+function startGame() {
+  document.getElementById('startGameBtn').style.display = 'none';
+  document.getElementById('gameMsg').textContent = '';
+  sizeCanvas();
+  cupX = W / 2; items = []; score = 0; sugars = 3;
+  updateHud(); gameRunning = true; spawnTimer = 0; lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function updateHud() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('sugarLeft').textContent = sugars;
+}
+
+function spawn() {
+  const r = Math.random();
+  let type = r < 0.48 ? '❤️' : (r < 0.72 ? '🍵' : (r < 0.92 ? '🍬' : '🐱'));
+  items.push({ x: 25 + Math.random() * (W - 50), y: -20, v: 90 + Math.random() * 90 + score * 3, type });
+}
+
+function loop(now) {
+  if (!gameRunning) return;
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) { spawn(); spawnTimer = Math.max(0.35, 0.9 - score * 0.015); }
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = '30px serif'; ctx.textAlign = 'center';
+
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    it.y += it.v * dt;
+    ctx.fillText(it.type, it.x, it.y);
+    if (it.y > H - 34 && it.y < H - 2 && Math.abs(it.x - cupX) < 34) {
+      if (it.type === '🍬') {
+        sugars--; flashMsg('Şeker düştü çaya! 😱');
+        if (sugars <= 0) return endGame(false);
+      } else {
+        if (it.type === '🐱') { score += 3; flashMsg('Boğaç yakalandı! +3 🐱💕'); }
+        else score += it.type === '🍵' ? 2 : 1;
+        if (score >= TARGET) { updateHud(); return endGame(true); }
+      }
+      updateHud();
+      items.splice(i, 1);
+    } else if (it.y > H + 24) {
+      items.splice(i, 1);
+    }
+  }
+
+  ctx.font = '42px serif';
+  ctx.fillText(CUP, cupX, H - 8);
+  requestAnimationFrame(loop);
+}
+
+function flashMsg(t) {
+  const el = document.getElementById('gameMsg');
+  el.textContent = t;
+  setTimeout(() => { if (gameRunning) el.textContent = ''; }, 1200);
+}
+
+function endGame(won) {
+  gameRunning = false;
+  const msg = document.getElementById('gameMsg');
+  const btn = document.getElementById('startGameBtn');
+  if (won) {
+    confettiBurst(60);
+    msg.innerHTML = '<b>Görev tamamlandı! Çaycı seninle gurur duyuyor 🥹🍵</b>';
+    btn.textContent = 'Devam ➜'; btn.onclick = () => goTo('screen-quiz');
+  } else {
+    msg.innerHTML = '<b>Eyvah, çay şerbete döndü! 🍬😤 Bir daha dene!</b>';
+    btn.textContent = 'Tekrar Dene 🫖'; btn.onclick = startGame;
+  }
+  btn.style.display = 'inline-block';
+}
+
+function moveCup(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  cupX = Math.max(22, Math.min(W - 22, clientX - rect.left));
+}
+canvas.addEventListener('pointermove', e => { if (gameRunning) moveCup(e.clientX); });
+canvas.addEventListener('touchmove', e => { if (gameRunning) { e.preventDefault(); moveCup(e.touches[0].clientX); } }, { passive: false });
+window.addEventListener('keydown', e => {
+  if (!gameRunning) return;
+  if (e.key === 'ArrowLeft') cupX = Math.max(22, cupX - 28);
+  if (e.key === 'ArrowRight') cupX = Math.min(W - 22, cupX + 28);
+});
+
+/* ═══════════ EKRAN 2: quiz ═══════════ */
+const questions = [
+  {
+    q: 'İlk mesajımız neydi? 💬',
+    opts: ['Merhaba', 'Tık tık', 'Selam nasılsın?', 'Günaydın'],
+    a: 1,
+    reveal: '🚪 <b>"Tık tık"</b> — 17 Temmuz 2025, saat 08:05. Her şey bu iki kelimeyle başladı. Sen de kapıyı açtın iyi ki 💖'
+  },
+  {
+    q: 'Sana en çok ne diye seslenirim? 👑',
+    opts: ['Bebeğim', 'Hayatım', 'Başkanım', 'Kuzum'],
+    a: 2,
+    reveal: '👑 Tabii ki <b>Başkanım</b>! Tam <b>281 kere</b> demişim. Sen başkan oldukça ben de danışmanın, koruman ve çaycın olmaya devam 🍵😄'
+  },
+  {
+    q: 'Peki ben senin neyinim? 😎',
+    opts: ['Sadece çaycın', 'Danışman + koruma + çaycı', 'Şoförün', 'Muhafız komutanın'],
+    a: 1,
+    reveal: '🍵 Üçü birden: <b>danışmanın, koruman ve çaycın</b>. Tam hizmet paketi, başka yerde bulamazsın 😂'
+  },
+  {
+    q: 'İlk "Seviyorum seni 🦁" ne zaman dendi?',
+    opts: ['19 Eylül 2025', '1 Ocak 2026', '14 Şubat 2026', '17 Temmuz 2025'],
+    a: 0,
+    reveal: '🦁 <b>19 Eylül 2025</b>, sabah 07:34 — "Seviyorum seni 🦁". Ve hâlâ, her gün daha çok 💘'
+  },
+  {
+    q: '1 yılda birbirimize kaç mesaj atmışız? 📱',
+    opts: ['~1.500', '~2.400', '~3.161', '~5.000'],
+    a: 2,
+    reveal: '📱 Tam <b>3.161 mesaj</b>! Üstelik ben 1.713 - sen 1.448... Yani mesaj yarışını ben önde götürüyorum başkanım 😏'
+  },
+  {
+    q: 'Meraklı olan kimdi? 🤨',
+    opts: ['Meraklı Melahat', 'Meraklı Menekşe', 'Meraklı Melek', 'Meraklı Mualla'],
+    a: 0,
+    reveal: '😂 <b>Meraklı Melahat</b>! Ama merak etme, vekili başkan bırakma hattına kaydımız hâlâ duruyor 📋'
+  },
+  {
+    q: 'Sana ilk mesajı attığım gün sana ne demiştim? 🐱',
+    opts: ['Boğaç\'ın annesi', 'Kedili kız', 'Komşu teyze', 'Başkan hanım'],
+    a: 0,
+    reveal: '🐱 "Küsmüyüz <b>Boğaç\'ın annesi</b>" — daha ilk günden Boğaç aramızdaydı! Hatta ona oyuncak almak için 2 gün araştırma yapıp adamla tartıştım, psikolojim bozuldu 😂'
+  },
+  {
+    q: 'Rüyamda seni kim olarak görmüştüm? 😴',
+    opts: ['Hürrem Sultan', 'Polat Alemdar', 'Süper Kahraman', 'Cumhurbaşkanı'],
+    a: 1,
+    reveal: '😂 <b>Polat Alemdar</b>! Bizim rüyaların saçmalık seviyesi başka hiçbir çiftte yok, eminim 😅'
+  },
+  {
+    q: 'Birbirimize kaç kere "Günaydın" demişiz? 🌞',
+    opts: ['50', '75', '99', '120'],
+    a: 2,
+    reveal: '🌞 Tam <b>99 kere</b>! Ve unutma: "Sen de uyandığına göre gerçekten güneş doğmuş demektir" 💐'
+  }
+];
+let qIndex = 0;
+
+function showQuestion() {
+  const q = questions[qIndex];
+  document.getElementById('qProgress').textContent = `Soru ${qIndex + 1} / ${questions.length}`;
+  document.getElementById('qText').textContent = q.q;
+  const box = document.getElementById('qOptions');
+  box.innerHTML = '';
+  q.opts.forEach((o, i) => {
+    const b = document.createElement('button');
+    b.className = 'opt'; b.textContent = o;
+    b.onclick = () => answer(b, i);
+    box.appendChild(b);
+  });
+  const r = document.getElementById('qReveal');
+  r.classList.remove('show'); r.innerHTML = '';
+  document.getElementById('qNext').style.display = 'none';
+}
+
+function answer(btn, i) {
+  const q = questions[qIndex];
+  if (i === q.a) {
+    btn.classList.add('correct');
+    document.querySelectorAll('.opt').forEach(o => o.onclick = null);
+    const r = document.getElementById('qReveal');
+    r.innerHTML = q.reveal; r.classList.add('show');
+    confettiBurst(30);
+    document.getElementById('qNext').style.display = 'inline-block';
+  } else {
+    btn.classList.add('wrong');
+    toast('Yanlış! Çayına 10 tane şeker atıcam görürsün 😤🍬');
+    setTimeout(() => btn.classList.remove('wrong'), 600);
+  }
+}
+
+function toast(t) {
+  const el = document.getElementById('quizToast');
+  el.textContent = t; el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function nextQuestion() {
+  qIndex++;
+  if (qIndex < questions.length) showQuestion();
+  else goTo('screen-memories');
+}
+
+/* ═══════════ EKRAN 2.5: anılar şeridi ═══════════ */
+const memories = [
+  { d: '17 Temmuz 2025', t: '🚪 "Tık tık"', x: 'İlk mesaj. Kapı çalındı, sen açtın ve her şey başladı. "Küsmüyüz Boğaç\'ın annesi" 😄' },
+  { d: '21 Temmuz 2025', t: '🎂 İlk doğum günü kutlaması', x: '"Doğum günün kutlu olsun başkanım 🎉💐" — "Pasta göndereyim mi, çayım daha tam oturmadı :)"' },
+  { d: '19 Eylül 2025', t: '🦁 İlk "Seviyorum seni"', x: 'Sabah 07:34. İki kelime, bir aslan emojisi. Ve o günden beri her gün biraz daha fazla.' },
+  { d: 'Ekim 2025', t: '📝 Akrostiş şiir', x: 'Sana şiir yazdım, hem de akrostiş. "Uğraştım o kadar, boşa gitsin istemiyorum" 😅' },
+  { d: 'Ekim 2025', t: '🐱 Boğaç\'a oyuncak harekâtı', x: '2 gün boyunca "kedi neyle oynar" araştırdım, adamla tartıştım, psikolojim bozuldu. Ama Boğaç için değerdi 😂' },
+  { d: 'Mart 2026', t: '😴 Polat Alemdar rüyası', x: 'Rüyamda seni Polat Alemdar olarak gördüm. Bizim rüyaların saçmalık seviyesi bambaşka 😅' },
+  { d: 'Bugün', t: '💖 1 yıl, 3.161 mesaj', x: 'Ve hikayemiz devam ediyor... En güzel bölümleri daha yazılmadı Başkanım.' }
+];
+let memIndex = 0;
+function showMemory() {
+  const m = memories[memIndex];
+  document.getElementById('memDate').textContent = m.d;
+  document.getElementById('memTitle').textContent = m.t;
+  document.getElementById('memText').textContent = m.x;
+  document.getElementById('memProgress').textContent = (memIndex + 1) + ' / ' + memories.length;
+  document.getElementById('memNext').textContent = memIndex === memories.length - 1 ? 'Pastaya! 🎂' : 'Sonraki anı ➜';
+  const card = document.getElementById('memCard');
+  card.style.animation = 'none'; void card.offsetWidth; card.style.animation = 'fadeIn .5s ease';
+}
+function nextMemory() {
+  if (memIndex === memories.length - 1) { goTo('screen-cake'); return; }
+  memIndex++; showMemory();
+}
+
+/* ═══════════ EKRAN 3: pasta ═══════════ */
+let candlesLeft = 5, cakeReady = false;
+function setupCake() {
+  if (cakeReady) return;
+  cakeReady = true;
+  const box = document.getElementById('candles');
+  for (let i = 0; i < 5; i++) {
+    const c = document.createElement('div');
+    c.className = 'candle';
+    c.innerHTML = '<div class="flame"></div><div class="smoke">💨</div>';
+    c.onclick = () => blow(c);
+    box.appendChild(c);
+  }
+  document.getElementById('cakeHint').textContent = '5 mum seni bekliyor... 🕯️';
+}
+function blow(c) {
+  const f = c.querySelector('.flame');
+  if (f.classList.contains('out')) return;
+  f.classList.add('out');
+  c.querySelector('.smoke').classList.add('show');
+  candlesLeft--;
+  const hint = document.getElementById('cakeHint');
+  if (candlesLeft > 0) {
+    hint.textContent = candlesLeft + ' mum kaldı... üflemeye devam! 🌬️';
+  } else {
+    hint.innerHTML = '<b>Hepsi söndü! Dileğini tuttun mu? 🌠</b>';
+    confettiBurst(140);
+    playMelody();
+    setTimeout(() => { document.getElementById('cakeNext').style.display = 'inline-block'; }, 900);
+  }
+}
+
+/* küçük "iyi ki doğdun" melodisi (WebAudio) */
+function playMelody() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ac = new AC();
+    const notes = [ // [frekans, süre]
+      [264,.4],[264,.2],[297,.6],[264,.6],[352,.6],[330,1],
+      [264,.4],[264,.2],[297,.6],[264,.6],[396,.6],[352,1],
+      [264,.4],[264,.2],[528,.6],[440,.6],[352,.6],[330,.6],[297,1],
+      [466,.4],[466,.2],[440,.6],[352,.6],[396,.6],[352,1.2]
+    ];
+    let t = ac.currentTime + 0.1;
+    notes.forEach(([f, d]) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(0.22, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, t + d * 0.95);
+      o.connect(g); g.connect(ac.destination);
+      o.start(t); o.stop(t + d);
+      t += d;
+    });
+  } catch (e) { /* ses desteklenmiyorsa sessiz devam */ }
+}
+
+/* ═══════════ EKRAN 4: mektup ═══════════ */
+const LETTER = `Başkanım, Prensesim İlayda 👑
+
+Tam bir yıl önce sana "Tık tık" yazmıştım.
+İyi ki o kapıyı açmışsın...
+
+Bugün senin günün. 21 Temmuz.
+İyi ki doğdun, iyi ki hayatımdasın. 🎂
+
+Sen uyandığına göre bugün de
+gerçekten güneş doğmuş demektir. 🌞
+
+Nice sağlıklı, mutlu, kahkaha dolu yaşlara.
+Yanında danışmanın, koruman ve çaycın olarak
+ben hep varım. 🍵
+
+Seni seviyorum 🦁
+— Fatih 💐
+
+(Boğaç'a da selamlar, oyuncağını
+hâlâ araştırıyorum 🐱)`;
+
+function startLetter() {
+  const el = document.getElementById('letterText');
+  el.innerHTML = '<span id="typed"></span><span class="cursor"></span>';
+  const typed = document.getElementById('typed');
+  let i = 0;
+  const iv = setInterval(() => {
+    typed.textContent += LETTER[i++];
+    if (i >= LETTER.length) {
+      clearInterval(iv);
+      el.querySelector('.cursor').remove();
+      document.getElementById('statsBox').style.display = 'grid';
+      document.getElementById('replayBtn').style.display = 'inline-block';
+      confettiBurst(100);
+    }
+  }, 45);
+}
+</script>
+</body>
+</html>
