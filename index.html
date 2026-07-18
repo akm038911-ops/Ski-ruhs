@@ -1313,13 +1313,53 @@
     }
 
     .fighter.lunge img{
-      animation:playerLunge .22s ease;
+      animation:playerLunge .32s ease;
     }
 
     @keyframes playerLunge{
-      0%{transform:translateX(0) scale(1)}
-      45%{transform:translateX(16px) scale(1.06) rotate(3deg)}
-      100%{transform:translateX(0) scale(1)}
+      0%{transform:translateX(0) scale(1) rotate(0)}
+      40%{transform:translateX(64px) scale(1.08) rotate(6deg)}
+      65%{transform:translateX(58px) scale(1.1) rotate(4deg)}
+      100%{transform:translateX(0) scale(1) rotate(0)}
+    }
+
+    .fighter.walk-in img{
+      animation:walkIn .55s cubic-bezier(.2,.7,.3,1) both;
+    }
+
+    @keyframes walkIn{
+      0%{transform:translateX(-70px) scale(.9); opacity:0}
+      100%{transform:translateX(0) scale(1); opacity:1}
+    }
+
+    .fighter.enemy.walk-in img{
+      animation:walkInEnemy .55s cubic-bezier(.2,.7,.3,1) both;
+    }
+
+    @keyframes walkInEnemy{
+      0%{transform:translateX(70px) scale(.9); opacity:0}
+      100%{transform:translateX(0) scale(1); opacity:1}
+    }
+
+    #atkProjectile{
+      position:absolute;
+      left:34%;
+      bottom:40%;
+      font-size:30px;
+      opacity:0;
+      pointer-events:none;
+      z-index:7;
+      transform:translateX(0) scale(.6) rotate(0deg);
+    }
+
+    #atkProjectile.fly{
+      animation:projectileFly .32s cubic-bezier(.25,.6,.35,1);
+    }
+
+    @keyframes projectileFly{
+      0%{opacity:1; transform:translateX(0) scale(.7) rotate(0deg)}
+      70%{opacity:1; transform:translateX(150px) scale(1.4) rotate(30deg)}
+      100%{opacity:0; transform:translateX(165px) scale(1.6) rotate(40deg)}
     }
 
     #impactFlash{
@@ -1573,6 +1613,7 @@
           <img id="playerFighterImg" alt="">
           <div class="fighter-name" id="playerFighterName"></div>
         </div>
+        <div id="atkProjectile"></div>
         <div id="hitPop"></div>
         <div class="fighter enemy" id="enemyFighter">
           <div class="hp-bar"><div class="hp-fill" id="enemyHpFill"></div></div>
@@ -2134,7 +2175,7 @@
         playerName:"Fatih & Boğaç",
         playerImg: FATIH_IMG,
         skills:{
-          skill1:{ icon:"🐾", name:"Pati Atağı", dmg:2, cd:3000 },
+          skill1:{ icon:"🦵", name:"Tekme", dmg:2, cd:3000 },
           skill2:{ icon:"☕", name:"Sıcak Çay", dmg:2, cd:4500 },
           ult:{ icon:"⚡", name:"İkili Darbe", dmg:99 }
         },
@@ -2151,7 +2192,7 @@
         playerName:"Başkan (İlayda)",
         playerImg: ILAYDA_FIGHTER_IMG,
         skills:{
-          skill1:{ icon:"👠", name:"Topuk Darbesi", dmg:2, cd:3000 },
+          skill1:{ icon:"🦵", name:"Tekme", dmg:2, cd:3000 },
           skill2:{ icon:"👜", name:"Çanta Savurma", dmg:2, cd:4500 },
           ult:{ icon:"👑", name:"Başkan Modu", dmg:99 }
         },
@@ -2180,6 +2221,7 @@
     const fightState = {
       active:false,
       locked:false,
+      finished:false,
       act:null,
       enemyIndex:0,
       enemyHp:0,
@@ -2206,6 +2248,7 @@
       hpFill: document.getElementById("enemyHpFill"),
       hitPop: document.getElementById("hitPop"),
       impactFlash: document.getElementById("impactFlash"),
+      atkProjectile: document.getElementById("atkProjectile"),
       skipBtn: document.getElementById("fightSkipBtn"),
       skillBasic: document.getElementById("skillBasic"),
       skillOne: document.getElementById("skillOne"),
@@ -2481,6 +2524,8 @@
 
     function beginFight(act){
       fightState.active = true;
+      fightState.finished = false;
+      fightState.locked = false;
       fightState.act = act;
       fightState.enemyIndex = 0;
       fightState.combo = 0;
@@ -2500,6 +2545,9 @@
       updateUltGauge();
       clearInterval(fightState.cooldownTimer);
       fightState.cooldownTimer = setInterval(tickCooldowns, 100);
+      fightEls.playerBox.classList.remove("walk-in");
+      void fightEls.playerBox.offsetWidth;
+      fightEls.playerBox.classList.add("walk-in");
       loadEnemy(0);
     }
 
@@ -2509,7 +2557,9 @@
       fightState.enemyMaxHp = enemy.hp;
       fightEls.enemyImg.src = enemy.img;
       fightEls.enemyName.textContent = enemy.name;
-      fightEls.enemyBox.classList.remove("ko","hit");
+      fightEls.enemyBox.classList.remove("ko","hit","walk-in");
+      void fightEls.enemyBox.offsetWidth;
+      fightEls.enemyBox.classList.add("walk-in");
       updateHpBar();
       fightEls.quote.textContent = enemy.taunt || "";
       fightEls.progress.textContent = "DÜŞMAN " + (i+1) + "/" + fightState.act.enemies.length;
@@ -2564,10 +2614,18 @@
         });
     }
 
-    function landHit(dmg, isUlt){
+    function throwAttackIcon(icon){
+      fightEls.atkProjectile.textContent = icon;
+      fightEls.atkProjectile.classList.remove("fly");
+      void fightEls.atkProjectile.offsetWidth;
+      fightEls.atkProjectile.classList.add("fly");
+    }
+
+    function landHit(dmg, isUlt, icon){
       fightState.enemyHp -= dmg;
       updateHpBar();
       lungePlayer();
+      throwAttackIcon(icon || "👊");
       screenShake();
       impactFlash();
       fightEls.enemyBox.classList.remove("hit");
@@ -2607,7 +2665,7 @@
         updateUltGauge();
         fightState.combo++;
         fightEls.combo.textContent = "COMBO x" + fightState.combo;
-        landHit(skills.ult.dmg, true);
+        landHit(skills.ult.dmg, true, skills.ult.icon);
         return;
       }
       if(skillKey !== "basic"){
@@ -2617,9 +2675,10 @@
       fightState.combo++;
       fightEls.combo.textContent = "COMBO x" + fightState.combo;
       const dmg = skillKey === "basic" ? 1 : skills[skillKey].dmg;
+      const icon = skillKey === "basic" ? "👊" : skills[skillKey].icon;
       fightState.ultGauge = Math.min(100, fightState.ultGauge + (skillKey === "basic" ? ULT_GAIN.basic : ULT_GAIN.skill));
       updateUltGauge();
-      landHit(dmg, false);
+      landHit(dmg, false, icon);
     }
 
     function nextEnemyOrFinish(){
@@ -2634,7 +2693,7 @@
     }
 
     function autoWinFight(){
-      if(!fightState.active) return;
+      if(!fightState.active || fightState.locked) return;
       fightState.active = false;
       fightState.enemyHp = 0;
       updateHpBar();
@@ -2646,6 +2705,8 @@
     }
 
     function finishFight(){
+      if(fightState.finished) return;
+      fightState.finished = true;
       fightState.active = false;
       clearInterval(fightState.cooldownTimer);
       fightEls.screen.classList.remove("show");
